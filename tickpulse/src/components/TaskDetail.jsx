@@ -5,6 +5,7 @@ import { useTasks } from '@/context/TaskContext';
 import { taskApi } from '@/context/TaskContext'; // Add this import
 import { useToast } from '@/context/ToastContext'; // Add this import
 import { CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { TaskList } from '@/components/TaskList'
 
 /**
  * @component TaskDetail
@@ -23,6 +24,9 @@ export default function TaskDetail({ task }) {
     deadline: '',
     priority: 'none',
     category_name: 'inbox', // Changed from projectId
+
+    // 這個暫時加上去的
+    status: 'pending'
   });
   
   // Get the selected task
@@ -56,7 +60,9 @@ export default function TaskDetail({ task }) {
    * Dispatches an action to update the task's status in the global state.
    */
   const handleToggleComplete = () => {
+    const nextStatus = selectedTask.status === 'completed' ? 'pending' : 'completed';
     dispatch({ type: 'TOGGLE_TASK', payload: selectedTask.id });
+    showSuccess(`${selectedTask.id} marked as ${nextStatus} (Dev Mode)`);
   };
   
   /**
@@ -68,6 +74,14 @@ export default function TaskDetail({ task }) {
     if (!selectedTask || !selectedTask.id) return;
     
     try {
+
+      // For frontend dev use
+      if (process.env.NODE_ENV === 'development') {
+        dispatch({ type: 'DELETE_TASK', payload: selectedTask.id });
+        showSuccess(`${selectedTask.id} deleted successfully (Dev Mode)`);
+        return; // Stop execution if in dev mode
+      }
+
       // First call the API to delete the task
       await taskApi.deleteTask(selectedTask.id);
       
@@ -119,6 +133,20 @@ export default function TaskDetail({ task }) {
         priority: editForm.priority,
         category_name: editForm.category_name,
       };
+
+      // For frontend dev use
+      if (process.env.NODE_ENV === 'development') {
+        dispatch({
+          type: 'UPDATE_TASK',
+          payload: {
+            taskId: selectedTask.id,
+            updates: editForm // 包含修改後的名稱、內容、日期、優先級、分類
+          }
+        });
+        setIsEditing(false);
+        showSuccess('Task updated successfully (Dev Mode)');
+        return; // Stop execution if in dev mode
+      }  
 
       // Update the task with all fields to ensure task_name is included
       await taskApi.updateTask(selectedTask.id, updateData);

@@ -90,6 +90,7 @@ export default function TaskModule() {
     deadline: '',
     priority: 'none',
     categoryName: selectedCategoryId || 'inbox', // This will be mapped to category_name in API
+    status: 'pending',
   });
 
   // Remove editForm and its handlers if not used for modal
@@ -136,6 +137,27 @@ export default function TaskModule() {
     if (!form.title.trim()) return;
     
     try {
+      // For frontend dev use
+      if (process.env.NODE_ENV === 'development') {
+        dispatch({
+          type: 'ADD_TASK',
+          payload: {
+            id: `task-${Date.now()}`,
+            task_name: form.title.trim(),
+            content: form.content,
+            deadline: form.deadline,
+            priority: form.priority,
+            category_name: form.categoryName, // 綁定到對應的分類 ID
+            status: form.status,
+            createdAt: new Date().toISOString()
+          }
+        });
+        
+        setShowModal(false);
+        showSuccess('Task created successfully (Dev Mode)');
+        return; // 💥 直接攔截返回
+      }
+
       // First create the task in the backend
       const response = await taskApi.createTask({
         title: form.title,
@@ -143,7 +165,7 @@ export default function TaskModule() {
         deadline: form.deadline,
         priority: form.priority,
         categoryName: form.categoryName,
-        status: 'pending'
+        status: form.status,
       });
       
       // Then update the local state with the response from the backend
