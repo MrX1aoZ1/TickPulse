@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTasks } from '@/context/TaskContext';
+<<<<<<< Updated upstream
 import { taskApi } from '@/context/TaskContext'; // Add this import
 import { useToast } from '@/context/ToastContext'; // Add this import
 import { CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -24,6 +25,90 @@ export default function TaskDetail({ task }) {
     deadline: '',
     priority: 'none',
     category_name: 'inbox', // Changed from projectId
+=======
+import { taskApi } from '@/context/TaskContext';
+import { useToast } from '@/context/ToastContext';
+// 1. 引入 TipTap 核心组件与扩展
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+
+import { 
+  CheckIcon, 
+  CalendarIcon, 
+  FlagIcon, 
+  TrashIcon, 
+  FolderIcon 
+} from '@heroicons/react/24/outline';
+
+/**
+ * @component TaskDetail
+ * @description 滴答清單風格 - 融入 TipTap 的實時 Markdown 渲染詳情面板
+ */
+export default function TaskDetail() {
+  const { tasks, dispatch, selectedTaskId, categories } = useTasks();
+  const { showSuccess, showError } = useToast();
+  
+  // 核心狀態：獲取當前選中的任務
+  const selectedTask = tasks && tasks.find ? tasks.find(t => String(t.id) === String(selectedTaskId)) : null;
+  
+  // 用於動態同步輸入框的局部狀態 (注意：content 移交給 tiptap 管理了)
+  const [taskName, setTaskName] = useState('');
+
+  // 2. 初始化 TipTap 編輯器
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        // 覆寫內建的加粗行為
+        bold: {
+          HTMLAttributes: {
+            // 給所有的 strong 標籤預設加上一個 class，方便我們用 CSS 控制
+            class: 'notion-bold-node',
+          },
+        }
+      }),
+      Placeholder.configure({
+        placeholder: '添加步驟、描述或備忘紀錄... (支援 Markdown 語法如 # 標題、**加粗**)',
+      }),
+    ],
+    // 💡 注入自訂快捷鍵與行為
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        // 監聽 Ctrl + B (Windows) 或 Cmd + B (Mac)
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+          event.preventDefault(); // 阻止瀏覽器預設的加粗
+
+          const { state } = view;
+          const { selection } = state;
+          const { empty, from } = selection;
+
+          // 情況 A: 如果使用者沒有選中任何文字，直接按下 Ctrl+B
+          if (empty) {
+            // 1. 使用 editor 核心命令安全地在當前光標處插入 ****
+            editor.commands.insertContent('****');
+            
+            // 2. 將光標精準向左移動 2 個字元，讓它乖乖待在 **** 的正中間
+            // from + 2 就是剛好在第二個 * 後面的位置
+            editor.commands.setTextSelection(from + 2);
+            return true;
+          }
+          
+          // 情況 B: 如果選中了文字，則執行標準加粗 toggle（已刪除錯誤代碼）
+          editor.commands.toggleBold();
+          return true;
+        }
+        return false;
+      },
+      attributes: {
+        class: 'prose dark:prose-invert focus:outline-none max-w-none',
+      }
+    },
+    onBlur: ({ editor }) => {
+      const htmlContent = editor.getHTML();
+      updateTaskField('content', htmlContent);
+    },
+  }, []);
+>>>>>>> Stashed changes
 
     // 這個暫時加上去的
     status: 'pending'
@@ -35,6 +120,7 @@ export default function TaskDetail({ task }) {
   // When the selected task changes, update the edit form
   useEffect(() => {
     if (selectedTask) {
+<<<<<<< Updated upstream
       setEditForm({
         task_name: selectedTask.task_name || '', // Changed from title
         content: selectedTask.content || '',
@@ -46,6 +132,18 @@ export default function TaskDetail({ task }) {
   }, [selectedTask]);
   
   // If no task is selected, display a placeholder message
+=======
+      setTaskName(selectedTask.task_name || '');
+      
+      // 3. 任務切換時，動態將新內容塞入 TipTap 編輯器
+      if (editor) {
+        editor.commands.setContent(selectedTask.content || '');
+      }
+    }
+  }, [selectedTask, editor]);
+
+  // 如果沒有選中任何任務，顯示佔位提示
+>>>>>>> Stashed changes
   if (!selectedTask) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-gray-400 dark:text-gray-500">
@@ -59,6 +157,44 @@ export default function TaskDetail({ task }) {
    * @description Toggles the completion status of the selected task.
    * Dispatches an action to update the task's status in the global state.
    */
+<<<<<<< Updated upstream
+=======
+  const updateTaskField = async (fieldName, value) => {
+    if (selectedTask[fieldName] === value) return;
+
+    const updatedUpdates = {
+      task_name: fieldName === 'task_name' ? value : selectedTask.task_name,
+      content: fieldName === 'content' ? value : selectedTask.content,
+      deadline: fieldName === 'deadline' ? value : selectedTask.deadline,
+      priority: fieldName === 'priority' ? value : selectedTask.priority,
+      category_name: fieldName === 'category_name' ? value : selectedTask.category_name,
+    };
+
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        dispatch({
+          type: 'UPDATE_TASK',
+          payload: { taskId: selectedTask.id, updates: updatedUpdates }
+        });
+        return;
+      }
+
+      await taskApi.updateTask(selectedTask.id, updatedUpdates);
+      dispatch({
+        type: 'UPDATE_TASK',
+        payload: { taskId: selectedTask.id, updates: updatedUpdates }
+      });
+    } catch (error) {
+      console.error(`Failed to update ${fieldName}:`, error);
+      showError('Failed to update task');
+      if (fieldName === 'task_name') setTaskName(selectedTask.task_name || '');
+      // 失敗時還原 TipTap 內容
+      if (fieldName === 'content' && editor) editor.commands.setContent(selectedTask.content || '');
+    }
+  };
+
+  // 勾選/取消勾選任務狀態
+>>>>>>> Stashed changes
   const handleToggleComplete = () => {
     const nextStatus = selectedTask.status === 'completed' ? 'pending' : 'completed';
     dispatch({ type: 'TOGGLE_TASK', payload: selectedTask.id });
@@ -106,6 +242,7 @@ export default function TaskDetail({ task }) {
     setEditForm(prev => ({ ...prev, [name]: value }));
   };
 
+<<<<<<< Updated upstream
   /**
    * @function handleCategoryChange
    * @description Handles category change in the edit form.
@@ -206,6 +343,29 @@ export default function TaskDetail({ task }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Deadline
             </label>
+=======
+  return (
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-900 border-l border-gray-100 dark:border-zinc-800 text-gray-800 dark:text-zinc-100">
+      
+      {/* 1. 頂部小工具功能列 */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-50 dark:border-zinc-800/50">
+        <div className="flex items-center space-x-4 flex-1">
+          {/* Tickbox */}
+          <button
+            onClick={handleToggleComplete}
+            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors flex-shrink-0 ${
+              selectedTask.status === 'completed'
+                ? 'bg-green-500 border-green-500 text-white'
+                : 'border-gray-300 dark:border-zinc-600 hover:border-gray-400'
+            }`}
+          >
+            {selectedTask.status === 'completed' && <CheckIcon className="h-3.5 w-3.5 stroke-[3]" />}
+          </button>
+
+          {/* 日期選擇器 */}
+          <div className="relative flex items-center text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer group max-w-max">
+            <CalendarIcon className="h-5 w-5 flex-shrink-0" />
+>>>>>>> Stashed changes
             <input
               type="date"
               name="deadline"
@@ -214,11 +374,20 @@ export default function TaskDetail({ task }) {
               className="w-full p-2 border border-gray-300 dark:border-zinc-600 rounded-md dark:bg-zinc-800"
             />
           </div>
+<<<<<<< Updated upstream
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Priority
             </label>
+=======
+        </div>
+
+        {/* 工具列右側：其餘操作功能圖標區 */}
+        <div className="flex items-center space-x-4 text-gray-400 dark:text-zinc-500">
+          {/* 優先級 */}
+          <div className="relative flex items-center group">
+>>>>>>> Stashed changes
             <select
               name="priority"
               value={editForm.priority}
@@ -231,11 +400,17 @@ export default function TaskDetail({ task }) {
               <option value="high">High</option>
             </select>
           </div>
+<<<<<<< Updated upstream
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Category
             </label>
+=======
+
+          {/* 分類資料夾 */}
+          <div className="relative flex items-center group">
+>>>>>>> Stashed changes
             <select
               name="category_name"
               value={editForm.category_name}
@@ -309,6 +484,7 @@ export default function TaskDetail({ task }) {
               {categories.find(c => c.id === selectedTask.category_name)?.name || 'None'}
             </span>
           </div>
+<<<<<<< Updated upstream
           <div className="flex space-x-2 mt-4">
             <button
               className={`px-4 py-2 rounded ${
@@ -324,6 +500,48 @@ export default function TaskDetail({ task }) {
           </div>
         </div>
       )}
+=======
+
+          <div className="w-px h-4 bg-gray-200 dark:bg-zinc-800"></div>
+
+          <button 
+            onClick={handleDeleteTask}
+            className="hover:text-red-500 dark:hover:text-red-400 transition-colors"
+            title="Delete Task"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* 下方主要內容大畫布 */}
+      <div className="flex-1 px-8 py-6 flex flex-col space-y-4 overflow-y-auto">
+        
+        {/* 2. 獨立出來的大標題 Inline 輸入區 */}
+        <div className="w-full">
+          <input
+            type="text"
+            value={taskName}
+            onChange={(e) => setTaskName(e.target.value)}
+            onBlur={() => updateTaskField('task_name', taskName.trim())}
+            onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+            placeholder="任務名稱"
+            className={`w-full bg-transparent text-2xl font-bold focus:outline-none border-b border-transparent focus:border-gray-100 dark:focus:border-zinc-800 pb-1 transition-colors ${
+              selectedTask.status === 'completed' 
+                ? 'line-through text-gray-400 dark:text-zinc-500 decoration-gray-400/70' 
+                : 'text-gray-900 dark:text-zinc-50'
+            }`}
+          />
+        </div>
+
+        {/* 4. 💡 替換成 TipTap 實時渲染編輯區 */}
+        <div className="flex-1 flex flex-col pt-2 tiptap-wrapper">
+          <EditorContent editor={editor} />
+        </div>
+
+      </div>
+
+>>>>>>> Stashed changes
     </div>
   );
 }
