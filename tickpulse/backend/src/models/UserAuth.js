@@ -20,7 +20,12 @@ const createUserAuthTable = async () => {
                 credential VARCHAR(255) NULL,
 
                 FOREIGN KEY (user_id) REFERENCES Users(id),
-                UNIQUE KEY unique_provider_identity (provider, provider_id)
+                UNIQUE KEY unique_provider_identity (provider, provider_id),
+
+                CONSTRAINT check_credential_or_provider_id CHECK (
+                    (provider = 'local' AND credential IS NOT NULL) OR 
+                    (provider <> 'local' AND provider_id IS NOT NULL)
+                )
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `;
 

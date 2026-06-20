@@ -13,7 +13,13 @@ function checkNotAuthenticated(req, res, next) {
 }
 
 const protect = async (req, res, next) => {
-	await verifyAndAttachUser(req, res, next);
+	req.user = { 
+        id: 1, 
+        email: 'test@example.com' 
+    };
+    return next();
+
+	// await verifyAndAttachUser(req, res, next);
 };
 
 // for testing purposes

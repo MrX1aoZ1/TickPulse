@@ -6,7 +6,18 @@ const connectDB = require('./config/db');
 async function getUserByEmail(email) {
   const connection = await connectDB();
   try {
-    const [users] = await connection.query('SELECT * FROM Users WHERE email = ?', [email]);
+    /**
+     * Fetch user credentials from UserAuth by joining with Users table.
+     * Aliasing 'credential' as 'password' to maintain compatibility with 
+     * Passport's local strategy logic below.
+     */
+    const [users] = await connection.query(
+      `SELECT u.*, ua.credential AS password 
+       FROM Users u
+       JOIN UserAuth ua ON u.id = ua.user_id
+       WHERE u.email = ? AND ua.provider = 'local'`, 
+      [email]
+    );
     return users[0] || null;
   } finally {
     await connection.end();

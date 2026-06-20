@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const express = require('express');
 const app = express();
 const cors = require('cors');
@@ -28,10 +29,16 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
+
 app.use(session({
   secret: process.env.ACCESS_TOKEN_SECRET,
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+        secure: false, 
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 
+    }
 }));
 
 // Connect to the Database and Ensure Tables
