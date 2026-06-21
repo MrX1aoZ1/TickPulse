@@ -6,6 +6,42 @@ import { useState, useEffect } from 'react';
 import { taskApi } from '@/context/TaskContext'; // Import taskApi
 import { useToast } from '@/context/ToastContext'; // Import useToast
 
+// For frontend dev use
+const mockTasks = [
+  {
+    id: 'task-1',
+    task_name: '🚀 將 TickPulse 前端組件進行分類重構',
+    status: 'pending',
+    priority: 'high',
+    category_name: '1',
+    deadline: new Date().toISOString().split('T')[0] // Due Today
+  },
+  {
+    id: 'task-2',
+    task_name: '📝 補全 TaskItem 的 TypeScript 接口定義',
+    status: 'pending',
+    priority: 'medium',
+    category_name: '1',
+    deadline: ''
+  },
+  {
+    id: 'task-3',
+    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
+    status: 'completed',
+    priority: 'low',
+    category_name: '3',
+    deadline: new Date().toISOString().split('T')[0]
+  },
+  {
+    id: 'task-4',
+    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
+    status: 'completed',
+    priority: 'low',
+    category_name: '3',
+    deadline: new Date().toISOString().split('T')[0]
+  }
+];
+
 /**
  * @component TaskList
  * @description Component for displaying a list of tasks.
@@ -13,20 +49,31 @@ import { useToast } from '@/context/ToastContext'; // Import useToast
  * Allows users to select, complete, and delete tasks.
  */
 export default function TaskList() {
-  const { 
-    tasks, 
-    dispatch, 
-    selectedTaskId, 
-    selectedView, 
-    activeFilter, 
+  const {
+    tasks = [],
+    dispatch,
+    selectedTaskId,
+    selectedView,
+    activeFilter,
     selectedCategoryId, // Changed from selectedProjectId
     categories // Changed from projects
   } = useTasks();
-  
+
   const { showSuccess, showError } = useToast(); // Add useToast hook
   const [filteredTasks, setFilteredTasks] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
-  
+
+
+  // For frontend dev use
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && tasks.length === 0) {
+      dispatch({
+        type: 'SET_TASKS',
+        payload: mockTasks
+      });
+    }
+  }, [dispatch, tasks.length]);
+
   /**
    * @function getViewTitle
    * @description Gets the title for the current view (e.g., category name or filter name).
@@ -46,25 +93,28 @@ export default function TaskList() {
     }
     return 'Tasks';
   };
-  
+
   // Filter and sort tasks
   useEffect(() => {
+
+    // For frontend dev use
     let result = [...tasks];
+
     if (selectedView === 'category') {
-        result = result.filter(task => task.category_name === selectedCategoryId);
+      result = result.filter(task => task.category_name === selectedCategoryId);
     } else if (selectedView === 'filter') {
-        if (activeFilter === 'today') {
-            const today = new Date().toISOString().split('T')[0];
-            result = result.filter(task => task.deadline === today && task.status !== 'completed');
-        } else if (activeFilter === 'completed') {
-            result = result.filter(task => task.status === 'completed');
-        }
+      if (activeFilter === 'today') {
+        const today = new Date().toISOString().split('T')[0];
+        result = result.filter(task => task.deadline === today && task.status !== 'completed');
+      } else if (activeFilter === 'completed') {
+        result = result.filter(task => task.status === 'completed');
+      }
     }
     // Add sorting logic here if needed, based on sortConfig
     // Example: result.sort((a, b) => { ... });
     setFilteredTasks(result);
-}, [tasks, selectedView, selectedCategoryId, activeFilter, sortConfig]); // Changed from selectedProjectId
-  
+  }, [tasks, selectedView, selectedCategoryId, activeFilter, sortConfig]); // Changed from selectedProjectId
+
   /**
    * @function handleTaskSelect
    * @description Handles the selection of a task.
@@ -74,7 +124,7 @@ export default function TaskList() {
   const handleTaskSelect = (taskId) => {
     dispatch({ type: 'SELECT_TASK', payload: taskId });
   };
-  
+
   /**
    * @function handleToggleComplete
    * @description Toggles the completion status of a task.
@@ -85,14 +135,27 @@ export default function TaskList() {
   const handleToggleComplete = async (e, taskId) => {
     e.stopPropagation(); // Prevent task selection when clicking the checkbox
     try {
+      // For frontend dev use
+
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
-      
+
       const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-      
+
+      if (process.env.NODE_ENV === 'development' ) {
+        // 模擬修改本地數據庫
+        dispatch({ type: 'TOGGLE_TASK', payload: taskId });
+
+        console.log(tasks);
+
+        showSuccess(`${taskId} marked as ${newStatus} (Dev Mode)`);
+
+        return; // Exit without calling API in dev mode
+      }
+
       // Call API to update task status
       await taskApi.updateTaskStatus(taskId, newStatus);
-      
+
       // Update local state
       dispatch({ type: 'TOGGLE_TASK', payload: taskId });
       showSuccess(`Task marked as ${newStatus}`);
@@ -101,7 +164,7 @@ export default function TaskList() {
       showError('Failed to update task status');
     }
   };
-  
+
   /**
    * @function handleDeleteTask
    * @description Handles the deletion of a task.
@@ -111,19 +174,29 @@ export default function TaskList() {
    */
   const handleDeleteTask = async (e, taskId) => {
     e.stopPropagation(); // Prevent task selection when clicking delete
-    if (window.confirm('Are you sure you want to delete this task?')) {
-      try {
-        // Call API to delete task
-        await taskApi.deleteTask(taskId);
-        
-        // Update local state
+
+    try {
+      // For frontend dev use   
+      if (process.env.NODE_ENV === 'development') {
         dispatch({ type: 'DELETE_TASK', payload: taskId });
-        showSuccess('Task deleted successfully');
-      } catch (error) {
-        console.error('Failed to delete task:', error);
-        showError('Failed to delete task');
+
+        console.log(tasks);
+
+        showSuccess(`${taskId} deleted successfully (Dev Mode)`);
+        return; // Exit without calling API in dev mo de
       }
+
+      // Call API to delete task
+      await taskApi.deleteTask(taskId);
+
+      // Update local state
+      dispatch({ type: 'DELETE_TASK', payload: taskId });
+      showSuccess('Task deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete task:', error);
+      showError('Failed to delete task');
     }
+
   };
 
   // Add this filter bar above the task list
@@ -144,11 +217,10 @@ export default function TaskList() {
                 dispatch({ type: 'SET_VIEW', payload: 'filter' });
                 dispatch({ type: 'SET_FILTER', payload: filter.key });
               }}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                selectedView === 'filter' && activeFilter === filter.key
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${selectedView === 'filter' && activeFilter === filter.key
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
-              }`}
+                }`}
             >
               {filter.label}
             </button>
@@ -163,33 +235,30 @@ export default function TaskList() {
         ) : (
           <ul className="divide-y divide-gray-200 dark:divide-zinc-700">
             {filteredTasks.map(task => (
-              <li 
+              <li
                 key={task.id}
                 onClick={() => handleTaskSelect(task.id)}
-                className={`p-4 cursor-pointer transition-colors ${
-                  task.id === selectedTaskId 
-                    ? 'bg-blue-50 dark:bg-blue-900/20' 
+                className={`p-4 transition-colors ${task.id === selectedTaskId
+                    ? 'bg-blue-50 dark:bg-blue-900/20'
                     : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
-                }`}
+                  }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3">
                     <button
                       onClick={(e) => handleToggleComplete(e, task.id)}
-                      className={`mt-0.5 flex-shrink-0 h-5 w-5 rounded-full border ${
-                        task.status === 'completed' // Changed from task.completed
+                      className={`mt-0.5 cursor-pointer flex-shrink-0 h-5 w-5 rounded-full border ${task.status === 'completed' // Changed from task.completed
                           ? 'bg-green-500 border-green-500 text-white'
                           : 'border-gray-300 dark:border-zinc-600'
-                      } flex items-center justify-center`}
+                        } flex items-center justify-center`}
                     >
                       {task.status === 'completed' && <CheckIcon className="h-3 w-3" />} {/* Changed from task.completed */}
                     </button>
                     <div>
-                      <h3 className={`text-sm font-medium ${
-                        task.status === 'completed' // Changed from task.completed
+                      <h3 className={`text-sm font-medium ${task.status === 'completed' // Changed from task.completed
                           ? 'text-gray-400 dark:text-gray-500 line-through'
                           : 'text-gray-800 dark:text-gray-200'
-                      }`}>
+                        }`}>
                         {task.task_name} {/* Changed from task.title */}
                       </h3>
                       {task.deadline && (
@@ -201,13 +270,12 @@ export default function TaskList() {
                   </div>
                   <div className="flex items-center space-x-2">
                     {task.priority !== 'none' && (
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        task.priority === 'high' 
+                      <span className={`text-xs px-2 py-1 rounded-full ${task.priority === 'high'
                           ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
                           : task.priority === 'medium'
                             ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200'
                             : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                      }`}>
+                        }`}>
                         {task.priority}
                       </span>
                     )}

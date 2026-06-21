@@ -17,6 +17,10 @@ export default function Home() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      if (process.env.NODE_ENV === 'development') {
+        return; 
+      }
+      
       const token = localStorage.getItem('accessToken');
       if (!token) {
         router.push('/login');
@@ -39,3 +43,6 @@ export default function Home() {
   );
   
 }
+
+
+

@@ -224,21 +224,21 @@ export default function NavigationBar() {
         <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">TickPulse</h1>
       </div>
 
-      {/* Navigation Links */}
       <nav className="flex-1 overflow-y-auto p-2 space-y-1">
-        {/* Timer Section */}
+        {/*
+        Timer Section
         <div className="mb-4">
           <h2 className="px-2 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Timer
           </h2>
           
-          {/* Timer Circle */}
+        
           <div className="flex justify-center my-2">
             <div className="relative w-20 h-20">
-              {/* Timer Background Circle */}
+              
               <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-zinc-700"></div>
               
-              {/* Progress Circle */}
+              
               <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
                 <circle
                   cx="50"
@@ -253,7 +253,7 @@ export default function NavigationBar() {
                 />
               </svg>
               
-              {/* Time Display */}
+              
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
                   {formatTime(time)}
@@ -262,7 +262,7 @@ export default function NavigationBar() {
             </div>
           </div>
           
-          {/* Timer Controls */}
+          
           <div className="flex justify-center space-x-2 mb-2">
             {!isRunning ? (
               <button
@@ -290,13 +290,13 @@ export default function NavigationBar() {
             </button>
           </div>
           
-          {/* Timer Mode Selector */}
+          
           {renderTimerModeSelector()}
           
-          {/* Countdown Input (conditionally rendered) */}
+         
           {timerMode === 'countdown' && renderCountdownInput()}
           
-          {/* Timer Navigation */}
+          
           <button
             onClick={() => router.push('/timer')}
             className="w-full flex items-center px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-800"
@@ -305,6 +305,7 @@ export default function NavigationBar() {
             Timer Page
           </button>
         </div>
+        */}
 
         {/* Filters Section */}
         <div className="mb-4">

@@ -53,14 +53,19 @@ export default function LoginPage() {
 
       try {
         // Send login request to the backend
-        const response = await fetch(
-          'http://localhost:3000/auth/login',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          }
-        );
+        // const response = await fetch(
+        //   'http://localhost:3000/auth/login',
+        //   {
+        //     method: 'POST',
+        //     headers: { 'Content-Type': 'application/json' },
+        //     body: JSON.stringify({ email, password })
+        //   }
+        // );
+
+        const response = useState({
+          status: 200,
+          data: { message: "Success" }
+        });
 
         const data = await response.json().catch(() => undefined); // Parse JSON response
 

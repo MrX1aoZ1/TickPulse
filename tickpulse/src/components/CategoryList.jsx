@@ -6,6 +6,14 @@ import { taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 import { PlusIcon, PencilIcon, TrashIcon, FolderIcon } from '@heroicons/react/24/outline';
 
+// For frontend dev use
+const mockCategories = [
+  { id: 'inbox', name: 'Inbox' },
+  { id: '1', name: '💼 工作项目' },
+  { id: '2', name: '🏡 生活 Tab' },
+  { id: '3', name: '🤖 Gym 健身打卡' }
+];
+
 /**
  * @component CategoryList
  * @description Component for displaying and managing task categories.
@@ -20,10 +28,14 @@ export default function CategoryList() {
   const [editName, setEditName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+
+  // For frontend dev use
+  const [localDbCategories, setLocalDbCategories] = useState(mockCategories);
+
   useEffect(() => {
     fetchCategories();
     // eslint-disable-next-line
-  }, []);
+  }, [localDbCategories]);
 
   /**
    * @function fetchCategories
@@ -33,6 +45,16 @@ export default function CategoryList() {
   const fetchCategories = async () => {
     try {
       setIsLoading(true);
+
+      // For dev use
+      if (process.env.NODE_ENV === 'development') {
+        dispatch({
+          type: 'SET_CATEGORIES',
+          payload: localDbCategories
+        });
+        return; // Stop execution if in dev mode
+      }
+      
       const fetchedCategories = await taskApi.getAllCategories();
       if (Array.isArray(fetchedCategories)) {
         const transformedCategories = fetchedCategories.map(cat => ({
@@ -80,6 +102,22 @@ export default function CategoryList() {
     if (!newCategoryName.trim()) return;
     try {
       setIsLoading(true);
+
+      // For frontend dev use
+      if (process.env.NODE_ENV === 'development') {
+        // 模拟后端生成自增 ID 并存入“数据库”
+        const newCat = {
+          id: String(Date.now()),
+          name: newCategoryName.trim()
+        };
+        setLocalDbCategories([...localDbCategories, newCat]);
+        
+        setNewCategoryName('');
+        setIsAdding(false);
+        showSuccess('Category created successfully (Dev Mode)');
+        return; //Stop execution if in dev mode
+      }
+
       const response = await taskApi.createCategory(newCategoryName.trim());
       if (response && response.category_id) {
         dispatch({
@@ -125,6 +163,13 @@ export default function CategoryList() {
     }
     if (window.confirm(`Are you sure you want to delete this category? Tasks will be moved to Inbox.`)) {
       try {
+        if (process.env.NODE_ENV === 'development') {
+          // Delete from localDbCategories if in dev mode
+          setLocalDbCategories(localDbCategories.filter(cat => cat.id !== categoryId));
+          showSuccess('Category deleted successfully (Dev Mode)');
+          return; // Stop execution if in dev mode
+        }
+
         dispatch({ type: 'DELETE_CATEGORY', payload: categoryId });
         showSuccess('Category deleted successfully');
       } catch (error) {
@@ -162,6 +207,21 @@ export default function CategoryList() {
     if (!editName.trim() || !editingId) return;
     try {
       setIsLoading(true);
+
+      // For frontend dev use  
+      if (process.env.NODE_ENV === 'development') {
+        // 更新本地“数据库”对应的分类名字
+        setLocalDbCategories(
+          localDbCategories.map(cat => 
+            cat.id === editingId ? { ...cat, name: editName.trim() } : cat
+          )
+        );
+        setEditingId(null);
+        setEditName('');
+        showSuccess('Category renamed successfully (Dev Mode)');
+        return; // Stop execution if in dev mode
+      }
+
       dispatch({
         type: 'RENAME_CATEGORY',
         payload: {
