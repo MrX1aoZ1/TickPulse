@@ -11,7 +11,7 @@ const createCategoryTable = require('./models/Category');
 const createSubtaskTable = require('./models/SubTask');
 const createTaskTable = require('./models/Task');
 const createUserTable = require('./models/User');
-const createUserAuthTable= require('./models/UserAuth');
+const createUserAuthTable = require('./models/UserAuth');
 const createTimerTable = require('./models/Timer');
 
 // Initiallize the Routes
@@ -23,21 +23,21 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cors({
-  origin: 'http://localhost:3001',
-  // origin: process.env.CLIENT_URL || "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
+    origin: 'http://localhost:3001',
+    // origin: process.env.CLIENT_URL || "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
 }));
 
 app.use(session({
-  secret: process.env.ACCESS_TOKEN_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-        secure: false, 
+    secret: process.env.ACCESS_TOKEN_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false,
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 
+        maxAge: 24 * 60 * 60 * 1000
     }
 }));
 
@@ -62,10 +62,10 @@ app.use(passport.session());
 
 // Public Routing
 app.get('/api/data', (req, res) => {
-  res.json({ 
-    message: 'Public Data, No Authentication Required',
-    timestamp: new Date().toISOString()
-  });
+    res.json({
+        message: 'Public Data, No Authentication Required',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Routes
@@ -82,5 +82,5 @@ app.use("/api/license", licenseKeyRoutes)
 // Start Server
 const PORT = process.env.PORT
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });

@@ -152,6 +152,5 @@ module.exports = {
   generateRefreshToken,
   verifyToken,
   handleLogout,
-  tokenStore,
   verifyAndAttachUser
 };
