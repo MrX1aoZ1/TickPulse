@@ -88,9 +88,37 @@ async function runTests() {
         console.log(`--------------------------------------------------`);
 
         // ==========================================
-        // Test 4: Logout Test
+        // Test 4: Fetch All Category
         // ==========================================
-        console.log('Test 4: Logout Test');
+        console.log('Test 4: Fetch All Category');
+        
+        const res4 = await fetch(`${API_BASE}/api/tasks/category`, {
+            method: 'GET',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Cookie': sessionCookie
+            },
+        });
+
+        const data4 = await res4.json();
+
+        if (res4.status === 200) {
+            console.log(`➔ 當前使用者共有 ${data4.length} 個分類，詳細清單如下：`);
+            console.dir(data4, { depth: null, colors: true });
+        } else if (res4.status === 404 && data4.message === 'No categories found') {
+            console.log('ℹ️ 提示：成功打通路由，但資料庫中該使用者沒有任何分類 (回傳 404 No categories found)。');
+        } else {
+            console.error(`❌ 失敗：調用 getAllCategory 發生錯誤。`);
+            console.error(`➔ 狀態碼: ${res4.status}`);
+            console.error(`➔ 錯誤訊息:`, data4);
+        }
+        console.log(`--------------------------------------------------`);  
+
+
+        // ==========================================
+        // Test 5: Logout Test
+        // ==========================================
+        console.log('Test 5: Logout Test');
         const logoutRes = await fetch(`${API_BASE}/auth/logout`, {
             method: 'POST',
             headers: { 'Cookie': sessionCookie }
@@ -102,9 +130,9 @@ async function runTests() {
 
 
         // ==========================================
-        // Test 5: Security Test, verify if task can be created after logout
+        // Test 6: Security Test, verify if task can be created after logout
         // ==========================================
-        console.log('Test 5: Security Test');
+        console.log('Test 6: Security Test');
         const verifyRes = await fetch(`${API_BASE}/tasks`, {
             method: 'POST',
             headers: {

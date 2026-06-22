@@ -7,17 +7,18 @@ const router = express.Router();
     
 // Task Routes
 
-router.get('/', protect, getTasks); // Get all tasks
-router.get('/:id', protect, getTaskById); // Get task by ID
+router.get('/', protect, getTasks); 
+router.post('/', protect, createTask); 
 
-router.post('/', protect, createTask); // Create a new task
-router.put('/:id', protect, updateTask); // Update a task by ID
-router.delete('/:id', protect, deleteTask); // Delete a task by ID
-router.put('/:id', protect, updateTaskOrder);
+router.post('/category', protect, createCategory); 
+router.get('/category', protect, getAllCategory); 
 
-// router.get('/category/:category_name', protect, getTasksByCategory); // Get tasks by category
-// router.post('/category', protect, createCategory); // Create a new category
-// router.get('/category', protect, getAllCategory); // Get tasks by category
+router.get('/category/:category_name', protect, getTasksByCategory); 
+
+router.get('/:id', protect, getTaskById); 
+router.put('/:id', protect, updateTask); 
+router.delete('/:id', protect, deleteTask); 
+router.put('/:id/reorder', protect, updateTaskOrder);
 
 
 module.exports = router;

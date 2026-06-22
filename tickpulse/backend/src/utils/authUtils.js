@@ -79,40 +79,51 @@ function verifyToken(req, res, next) {
 }
 
 function handleLogout(req, res) {
-	try {
-	  // Disable the accessToken
-	  const accessToken = req.headers.authorization?.split(' ')[1];
-	  if (accessToken) {
-		const decoded = jwt.decode(accessToken);
-		if (decoded?.jti) tokenStore.invalidateAccessToken(decoded.jti);
-	  }
+  try {
+    // 1. 嘗試清理老舊的 accessToken (若有帶的話)
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    if (accessToken) {
+      const decoded = jwt.decode(accessToken);
+      if (decoded?.jti) tokenStore.invalidateAccessToken(decoded.jti);
+    }
   
-	  // Check whether the request body (refreshToekn) exist
-	  if (!req.body) {
-		return sendResponse.error(res, 'Invalid Request Body', 400);
-	  }
+    // 🎯 修正：移除強行的 !req.body 400 阻斷檢查。改成「有 refreshToken 才去清理」
+    const refreshToken = req.body?.refreshToken;
+    if (refreshToken) {
+      tokenStore.invalidateRefreshToken(refreshToken);
+    }
   
-	  // Disable the refreshToken
-	  const refreshToken = req.body.refreshToken;
-	  if (refreshToken) {
-		tokenStore.invalidateRefreshToken(refreshToken);
-	  }
-  
-	  // Passport Logout 
-	  req.logout(() => {
-		req.session.destroy(() => {
-		  res.clearCookie('connect.sid', {
-			path: '/',
-			httpOnly: true,
-			secure: process.env.NODE_ENV === 'production'
-		  });
-		  sendResponse.success(res, { success: true });
-		});
-	  });
-	} catch (e) {
-	  console.error('Logout Error:', e);
-	  sendResponse.error(res, 'Logout Failed', 500);
-	}
+    // 🎯 2. 核心：不論前面是 JWT 還是 Cookie，最終都要徹底清理 Session 與 Cookie
+    if (typeof req.logout === 'function') {
+      req.logout(() => {
+        proceedToDestroySession(req, res);
+      });
+    } else {
+      proceedToDestroySession(req, res);
+    }
+
+  } catch (e) {
+    console.error('Logout Error:', e);
+    sendResponse.error(res, 'Logout Failed', 500);
+  }
+}
+
+// 輔助函式：確保徹底銷毀與清除 Cookie
+function proceedToDestroySession(req, res) {
+  if (req.session) {
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid', {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production'
+      });
+      // 這裡對齊你原有的 sendResponse 工具
+      sendResponse.success(res, { success: true });
+    });
+  } else {
+    res.clearCookie('connect.sid', { path: '/' });
+    sendResponse.success(res, { success: true });
+  }
 }
 
 async function verifyAndAttachUser(req, res, next) {

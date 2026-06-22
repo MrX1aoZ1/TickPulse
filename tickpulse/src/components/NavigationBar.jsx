@@ -159,10 +159,36 @@ export default function NavigationBar() {
     router.push('/');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
+  try {
+    // 🎯 1. 發送登出請求給後端，強制攜帶 credentials 讓後端知道要銷毀哪一個 Cookie
+    const response = await fetch('http://localhost:3000/auth/logout', {
+      method: 'POST', // 或是 GET，取決於你後端登出路由的設定（通常是 POST 或 DELETE）
+      credentials: 'include', 
+    });
+
+    if (!response.ok) {
+      console.warn('後端登出 Session 銷毀失敗，將強制進行前端清理');
+    }
+  } catch (error) {
+    console.error('登出請求發送失敗:', error);
+  } finally {
+    // 🎯 2. 前端清理保壘：不論後端成功與否，前端都要把緩存清空
+    if (typeof window !== 'undefined') {
+      // 如果你之前在 TaskContext 裡有存 'tickpulseState'，順便清掉它
+      localStorage.removeItem('tickpulseState'); 
+      
+      // 如果有殘留的舊 token，也一併清理乾淨
+      localStorage.removeItem('accessToken'); 
+    }
+
+    // 🎯 3. 跳轉回登入頁
     router.push('/login');
-  };
+    
+    // 💡 溫馨小貼士：如果你的 App 狀態沒有因為 router.push 完全重置，
+    // 可以考慮直接用 window.location.href = '/login'; 
+    // 這樣可以強制刷新整頁，把 React Context 裡面的任務、分類狀態「瞬間物理清空」，最安全！
+  }
+};
 
   // Handle calendar view
   const handleCalendarView = () => {

@@ -70,6 +70,8 @@ const getTasksByCategory = async (req, res) => {
 // @access  Private
 const getAllCategory = async (req, res) => {
     try {
+        console.log(req.user.id);
+
         const connection = await connectDB();   
         const [categories] = await connection.query(
             'SELECT * FROM categories WHERE user_id = ? ORDER BY sort_order ASC',

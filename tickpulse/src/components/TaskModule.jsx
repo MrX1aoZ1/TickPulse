@@ -138,25 +138,25 @@ export default function TaskModule() {
     
     try {
       // For frontend dev use
-      if (process.env.NODE_ENV === 'development') {
-        dispatch({
-          type: 'ADD_TASK',
-          payload: {
-            id: `task-${Date.now()}`,
-            task_name: form.title.trim(),
-            content: form.content,
-            deadline: form.deadline,
-            priority: form.priority,
-            category_name: form.categoryName, // 綁定到對應的分類 ID
-            status: form.status,
-            createdAt: new Date().toISOString()
-          }
-        });
+      // if (process.env.NODE_ENV === 'development') {
+      //   dispatch({
+      //     type: 'ADD_TASK',
+      //     payload: {
+      //       id: `task-${Date.now()}`,
+      //       task_name: form.title.trim(),
+      //       content: form.content,
+      //       deadline: form.deadline,
+      //       priority: form.priority,
+      //       category_name: form.categoryName, // 綁定到對應的分類 ID
+      //       status: form.status,
+      //       createdAt: new Date().toISOString()
+      //     }
+      //   });
         
-        setShowModal(false);
-        showSuccess('Task created successfully (Dev Mode)');
-        return; // 💥 直接攔截返回
-      }
+      //   setShowModal(false);
+      //   showSuccess('Task created successfully (Dev Mode)');
+      //   return; // 💥 直接攔截返回
+      // }
 
       // First create the task in the backend
       const response = await taskApi.createTask({

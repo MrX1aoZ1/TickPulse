@@ -5,6 +5,7 @@
   "scripts": {
     "devStart": "nodemon backend/server.js",
     "dev": "next dev --turbopack",
+    "test": "next dev APP_ENV=test next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -56,6 +57,7 @@
     "@eslint/eslintrc": "^3",
     "@eslint/js": "^9.21.0",
     "@tailwindcss/postcss": "^4.0.12",
+    "cross-env": "^10.1.0",
     "eslint": "^9.21.0",
     "eslint-config-next": "15.2.1",
     "eslint-plugin-react": "^7.37.4",

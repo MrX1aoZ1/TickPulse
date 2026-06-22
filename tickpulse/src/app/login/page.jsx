@@ -20,12 +20,12 @@ export default function LoginPage() {
   const [formError, setFormError] = useState(undefined); // State for displaying form errors
 
   // Effect to redirect to home page if user is already logged in (token exists)
-  useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      router.push('/');
-    }
-  }, [router]); // Dependency: router
+  // useEffect(() => {
+  //   const token = localStorage.getItem('accessToken');
+  //   if (token) {
+  //     router.push('/');
+  //   }
+  // }, [router]); // Dependency: router
 
   /**
    * Handles the form submission for login.
@@ -53,19 +53,20 @@ export default function LoginPage() {
 
       try {
         // Send login request to the backend
-        // const response = await fetch(
-        //   'http://localhost:3000/auth/login',
-        //   {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({ email, password })
-        //   }
-        // );
+        const response = await fetch(
+          'http://localhost:3000/auth/login',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+            credentials: 'include'
+          }
+        );
 
-        const response = useState({
-          status: 200,
-          data: { message: "Success" }
-        });
+        // const response = useState({
+        //   status: 200,
+        //   data: { message: "Success" }
+        // });
 
         const data = await response.json().catch(() => undefined); // Parse JSON response
 
@@ -96,7 +97,7 @@ export default function LoginPage() {
         }
 
         // On successful login, store access token and redirect
-        localStorage.setItem('accessToken', data.accessToken);
+        // localStorage.setItem('accessToken', data.accessToken);
         // localStorage.setItem('refreshToken', data.refreshToken); // Potentially for refresh token functionality
         router.push('/');
 

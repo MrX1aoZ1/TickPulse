@@ -35,14 +35,14 @@ export default function withAuth(Component) {
         // For client-side routing, we'll assume the token is valid if it exists.
         // Actual token validation should occur on the server for API requests.
         
-        // const isValid = await fetch('/api/verify-token', {
-        //   headers: { Authorization: `Bearer ${token}` }
-        // }).then(res => res.ok);
+        const isValid = await fetch('/api/verify-token', {
+          headers: { Authorization: `Bearer ${token}` }
+        }).then(res => res.ok);
         
-        // if (!isValid) {
-        //   localStorage.removeItem('accessToken');
-        //   router.push('/login');
-        // }
+        if (!isValid) {
+          localStorage.removeItem('accessToken');
+          router.push('/login');
+        }
       };
 
       checkAuth();

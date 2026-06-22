@@ -3,293 +3,189 @@
 import { useTasks } from '@/context/TaskContext';
 import { CheckIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
-import { taskApi } from '@/context/TaskContext'; // Import taskApi
-import { useToast } from '@/context/ToastContext'; // Import useToast
+import { taskApi } from '@/context/TaskContext'; 
+import { useToast } from '@/context/ToastContext'; 
 
-// For frontend dev use
-const mockTasks = [
-  {
-    id: 'task-1',
-    task_name: '🚀 將 TickPulse 前端組件進行分類重構',
-    status: 'pending',
-    priority: 'high',
-    category_name: '1',
-    deadline: new Date().toISOString().split('T')[0] // Due Today
-  },
-  {
-    id: 'task-2',
-    task_name: '📝 補全 TaskItem 的 TypeScript 接口定義',
-    status: 'pending',
-    priority: 'medium',
-    category_name: '1',
-    deadline: ''
-  },
-  {
-    id: 'task-3',
-    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
-    status: 'completed',
-    priority: 'low',
-    category_name: '3',
-    deadline: new Date().toISOString().split('T')[0]
-  },
-  {
-    id: 'task-4',
-    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
-    status: 'completed',
-    priority: 'low',
-    category_name: '3',
-    deadline: new Date().toISOString().split('T')[0]
-  }
-];
-
-/**
- * @component TaskList
- * @description Component for displaying a list of tasks.
- * Filters and sorts tasks based on the selected view (category or filter).
- * Allows users to select, complete, and delete tasks.
- */
 export default function TaskList() {
-  const {
-    tasks = [],
-    dispatch,
-    selectedTaskId,
-    selectedView,
-    activeFilter,
-    selectedCategoryId, // Changed from selectedProjectId
-    categories // Changed from projects
-  } = useTasks();
-
-  const { showSuccess, showError } = useToast(); // Add useToast hook
+  // 💡 安全防護：確保 tasks 有預設值空陣列，避免 map 報錯
+  const { tasks = [], selectedCategoryId, selectedView, activeFilter, dispatch, selectedTaskId } = useTasks();
+  const { showSuccess, showError } = useToast();
   const [filteredTasks, setFilteredTasks] = useState([]);
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [newTaskTitle, setNewTaskTitle] = useState('');
 
-
-  // For frontend dev use
+  // 1. 基於後端真實資料進行過濾與排序
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && tasks.length === 0) {
-      dispatch({
-        type: 'SET_TASKS',
-        payload: mockTasks
-      });
+    // 終極安全檢查：如果 tasks 不是陣列，直接給空
+    if (!Array.isArray(tasks)) {
+      setFilteredTasks([]);
+      return;
     }
-  }, [dispatch, tasks.length]);
 
-  /**
-   * @function getViewTitle
-   * @description Gets the title for the current view (e.g., category name or filter name).
-   * @returns {string} The title for the current view.
-   */
-  const getViewTitle = () => {
-    if (selectedView === 'category') { // Changed from 'project'
-      const category = categories.find(c => c.id === selectedCategoryId); // Changed from project
-      return category ? category.name : 'Tasks';
-    } else if (selectedView === 'filter') {
-      switch (activeFilter) {
-        case 'all': return 'All Tasks'; // Translated from 'All Mission'
-        case 'today': return 'Today\'s Tasks'; // Translated from 'Today Mission'
-        case 'completed': return 'Completed Tasks'; // Translated from 'Finished Mission'
-        default: return 'Tasks';
-      }
-    }
-    return 'Tasks';
-  };
-
-  // Filter and sort tasks
-  useEffect(() => {
-
-    // For frontend dev use
     let result = [...tasks];
 
+    // 分類視圖過濾
     if (selectedView === 'category') {
-      result = result.filter(task => task.category_name === selectedCategoryId);
-    } else if (selectedView === 'filter') {
+      // 💡 關鍵修正：後端現在關聯的是 category_id
+      result = result.filter(task => task && String(task.category_id) === String(selectedCategoryId));
+    } 
+    // 預設過濾器視圖 (All / Today / Completed)
+    else if (selectedView === 'filter') {
       if (activeFilter === 'today') {
-        const today = new Date().toISOString().split('T')[0];
-        result = result.filter(task => task.deadline === today && task.status !== 'completed');
+        const todayStr = new Date().toISOString().split('T')[0];
+        result = result.filter(task => task && task.deadline && task.deadline.startsWith(todayStr));
       } else if (activeFilter === 'completed') {
-        result = result.filter(task => task.status === 'completed');
+        // 後端可能是 status === 'completed' 或是 completed == 1/true
+        result = result.filter(task => task && (task.status === 'completed' || task.completed));
+      } else if (activeFilter === 'all') {
+        // 顯示全部未完成的任務
+        result = result.filter(task => task && task.status !== 'completed' && !task.completed);
       }
     }
-    // Add sorting logic here if needed, based on sortConfig
-    // Example: result.sort((a, b) => { ... });
-    setFilteredTasks(result);
-  }, [tasks, selectedView, selectedCategoryId, activeFilter, sortConfig]); // Changed from selectedProjectId
 
-  /**
-   * @function handleTaskSelect
-   * @description Handles the selection of a task.
-   * Dispatches an action to update the selected task in the global state.
-   * @param {string} taskId - The ID of the task to select.
-   */
-  const handleTaskSelect = (taskId) => {
-    dispatch({ type: 'SELECT_TASK', payload: taskId });
+    // 排序：高優先級在前
+    result.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1, none: 0 };
+      const pA = priorityOrder[a?.priority] || 0;
+      const pB = priorityOrder[b?.priority] || 0;
+      return pB - pA;
+    });
+
+    setFilteredTasks(result);
+  }, [tasks, selectedView, selectedCategoryId, activeFilter]);
+
+  // 2. 處理新增任務
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    const trimmedTitle = newTaskTitle.trim();
+    if (!trimmedTitle) return;
+
+    try {
+      // 傳送給後端的欄位：title
+      const response = await taskApi.createTask({
+        title: trimmedTitle,
+        categoryId: selectedView === 'category' ? selectedCategoryId : null
+      });
+
+      // 後端返回新任務後，派發給全域 Context
+      dispatch({ type: 'ADD_TASK', payload: response });
+      setNewTaskTitle('');
+      showSuccess('Task added successfully');
+    } catch (error) {
+      console.error('Failed to add task:', error);
+      showError('Failed to create task');
+    }
   };
 
-  /**
-   * @function handleToggleComplete
-   * @description Toggles the completion status of a task.
-   * Calls the API to update the task status and updates the local state.
-   * @param {Event} e - The event object.
-   * @param {string} taskId - The ID of the task to toggle.
-   */
-  const handleToggleComplete = async (e, taskId) => {
-    e.stopPropagation(); // Prevent task selection when clicking the checkbox
+  // 3. 處理切換任務完成狀態
+  const handleToggleComplete = async (e, task) => {
+    e.stopPropagation(); // 防止觸發選取任務
+    const newStatus = (task.status === 'completed' || task.completed) ? 'pending' : 'completed';
+    
     try {
-      // For frontend dev use
-
-      const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
-
-      const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-
-      if (process.env.NODE_ENV === 'development' ) {
-        // 模擬修改本地數據庫
-        dispatch({ type: 'TOGGLE_TASK', payload: taskId });
-
-        console.log(tasks);
-
-        showSuccess(`${taskId} marked as ${newStatus} (Dev Mode)`);
-
-        return; // Exit without calling API in dev mode
-      }
-
-      // Call API to update task status
-      await taskApi.updateTaskStatus(taskId, newStatus);
-
-      // Update local state
-      dispatch({ type: 'TOGGLE_TASK', payload: taskId });
-      showSuccess(`Task marked as ${newStatus}`);
+      await taskApi.updateTask(task.id, {
+        task_name: task.task_name,
+        status: newStatus
+      });
+      dispatch({ type: 'TOGGLE_TASK_STATUS', payload: task.id });
+      showSuccess(newStatus === 'completed' ? 'Task completed!' : 'Task marked as pending');
     } catch (error) {
-      console.error('Failed to update task status:', error);
       showError('Failed to update task status');
     }
   };
 
-  /**
-   * @function handleDeleteTask
-   * @description Handles the deletion of a task.
-   * Prompts for confirmation, calls the API, and updates local state.
-   * @param {Event} e - The event object.
-   * @param {string} taskId - The ID of the task to delete.
-   */
+  // 4. 處理刪除任務
   const handleDeleteTask = async (e, taskId) => {
-    e.stopPropagation(); // Prevent task selection when clicking delete
-
-    try {
-      // For frontend dev use   
-      if (process.env.NODE_ENV === 'development') {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to delete this task?')) {
+      try {
+        await taskApi.deleteTask(taskId);
         dispatch({ type: 'DELETE_TASK', payload: taskId });
-
-        console.log(tasks);
-
-        showSuccess(`${taskId} deleted successfully (Dev Mode)`);
-        return; // Exit without calling API in dev mo de
+        showSuccess('Task deleted');
+      } catch (error) {
+        showError('Failed to delete task');
       }
-
-      // Call API to delete task
-      await taskApi.deleteTask(taskId);
-
-      // Update local state
-      dispatch({ type: 'DELETE_TASK', payload: taskId });
-      showSuccess('Task deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete task:', error);
-      showError('Failed to delete task');
     }
-
   };
 
-  // Add this filter bar above the task list
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200 dark:border-zinc-700">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{getViewTitle()}</h2>
-        {/* Filter Bar */}
-        <div className="flex space-x-2 mt-2">
-          {[
-            { key: 'all', label: 'All Tasks' }, // Translated
-            { key: 'today', label: 'Today\'s Tasks' }, // Translated
-            { key: 'completed', label: 'Completed Tasks' } // Translated
-          ].map(filter => (
-            <button
-              key={filter.key}
-              onClick={() => {
-                dispatch({ type: 'SET_VIEW', payload: 'filter' });
-                dispatch({ type: 'SET_FILTER', payload: filter.key });
-              }}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${selectedView === 'filter' && activeFilter === filter.key
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
-                }`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-900">
+      {/* 頂部新增任務輸入框 */}
+      <div className="p-4 border-b border-gray-200 dark:border-zinc-800">
+        <form onSubmit={handleAddTask}>
+          <input
+            type="text"
+            placeholder="Add a task..."
+            value={newTaskTitle}
+            onChange={(e) => setNewTaskTitle(e.target.value)}
+            className="w-full px-4 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black dark:text-white"
+          />
+        </form>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {filteredTasks.length === 0 ? (
-          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-            No tasks
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-200 dark:divide-zinc-700">
-            {filteredTasks.map(task => (
-              <li
+
+      {/* 任務列表展示區 */}
+      <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-zinc-800">
+        {filteredTasks.length > 0 ? (
+          filteredTasks.map((task) => {
+            if (!task) return null;
+            const isCompleted = task.status === 'completed' || task.completed;
+            const isSelected = String(task.id) === String(selectedTaskId);
+
+            return (
+              <div
                 key={task.id}
-                onClick={() => handleTaskSelect(task.id)}
-                className={`p-4 transition-colors ${task.id === selectedTaskId
-                    ? 'bg-blue-50 dark:bg-blue-900/20'
-                    : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
-                  }`}
+                onClick={() => dispatch({ type: 'SELECT_TASK', payload: task.id })}
+                className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
+                  isSelected ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/30'
+                }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <button
-                      onClick={(e) => handleToggleComplete(e, task.id)}
-                      className={`mt-0.5 cursor-pointer flex-shrink-0 h-5 w-5 rounded-full border ${task.status === 'completed' // Changed from task.completed
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 dark:border-zinc-600'
-                        } flex items-center justify-center`}
-                    >
-                      {task.status === 'completed' && <CheckIcon className="h-3 w-3" />} {/* Changed from task.completed */}
-                    </button>
-                    <div>
-                      <h3 className={`text-sm font-medium ${task.status === 'completed' // Changed from task.completed
-                          ? 'text-gray-400 dark:text-gray-500 line-through'
-                          : 'text-gray-800 dark:text-gray-200'
-                        }`}>
-                        {task.task_name} {/* Changed from task.title */}
-                      </h3>
-                      {task.deadline && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Due date: {task.deadline}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {task.priority !== 'none' && (
-                      <span className={`text-xs px-2 py-1 rounded-full ${task.priority === 'high'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
-                          : task.priority === 'medium'
-                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                        }`}>
-                        {task.priority}
-                      </span>
+                <div className="flex items-center space-x-3 min-w-0">
+                  <button
+                    onClick={(e) => handleToggleComplete(e, task)}
+                    className={`h-5 w-5 rounded-md border flex items-center justify-center transition-colors ${
+                      isCompleted
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : 'border-gray-300 dark:border-zinc-600 hover:border-gray-400'
+                    }`}
+                  >
+                    {isCompleted && <CheckIcon className="h-3 w-3 stroke-[3]" />}
+                  </button>
+                  <div className="min-w-0">
+                    <h3 className={`text-sm font-medium truncate text-black dark:text-white ${isCompleted ? 'line-through text-gray-400 dark:text-zinc-500' : ''}`}>
+                      {/* 💡 統一使用後端資料庫的欄位名 task_name */}
+                      {task.task_name || 'Untitled Task'}
+                    </h3>
+                    {task.deadline && (
+                      <p className="text-xs text-gray-400 mt-0.5">Due: {task.deadline}</p>
                     )}
-                    <button
-                      onClick={(e) => handleDeleteTask(e, task.id)}
-                      className="text-gray-400 hover:text-red-500 dark:hover:text-red-400"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
+
+                <div className="flex items-center space-x-3">
+                  {task.priority && task.priority !== 'none' && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full uppercase font-semibold ${
+                      task.priority === 'high'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                        : task.priority === 'medium'
+                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                    }`}>
+                      {task.priority}
+                    </span>
+                  )}
+                  <button
+                    onClick={(e) => handleDeleteTask(e, task.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="p-8 text-center text-sm text-gray-400">
+            No tasks here yet.
+          </div>
         )}
       </div>
     </div>

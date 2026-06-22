@@ -6,6 +6,7 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const connectDB = require("./config/db");
+const sessionStore = require("./config/sessions");
 
 const createCategoryTable = require('./models/Category');
 const createSubtaskTable = require('./models/SubTask');
@@ -31,6 +32,7 @@ app.use(cors({
 }));
 
 app.use(session({
+    store: sessionStore,
     secret: process.env.ACCESS_TOKEN_SECRET,
     resave: false,
     saveUninitialized: false,

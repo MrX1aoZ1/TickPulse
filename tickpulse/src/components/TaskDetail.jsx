@@ -5,7 +5,7 @@ import { useTasks } from '@/context/TaskContext';
 import { taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 
-// 1. 引入 TipTap 核心组件与扩展
+// 1. 引入 TipTap 核心組件與擴展
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -18,235 +18,156 @@ import {
 
 /**
  * @component TaskDetail
- * @description 滴答清單風格 - 融入 TipTap 的實時 Markdown 渲染詳情面板（已移除傳統 Form 切換，改為全實時失焦保存）
+ * @description 滴答清單風格 - 融入 TipTap 的實時 Markdown 渲染詳情面板（全實時失焦/變更保存，完美對接後端實體欄位）
  */
 export default function TaskDetail() {
-  const { tasks, dispatch, selectedTaskId, categories } = useTasks();
+  const { tasks = [], dispatch, selectedTaskId, categories = [] } = useTasks();
   const { showSuccess, showError } = useToast();
   
-  // 核心狀態：獲取當前選中的任務
-  const selectedTask = tasks && tasks.find ? tasks.find(t => String(t.id) === String(selectedTaskId)) : null;
+  // 💡 安全防護：確保 tasks 是陣列，防止因 null/undefined 崩潰
+  const selectedTask = Array.isArray(tasks) 
+    ? tasks.find(t => t && String(t.id) === String(selectedTaskId)) 
+    : null;
   
-  // 用於動態同步輸入框的局部狀態 (注意：content 移交給 tiptap 管理了)
+  // 用於動態同步輸入框的局部狀態
   const [taskName, setTaskName] = useState('');
 
   // 2. 初始化 TipTap 編輯器
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        // 覆寫內建的加粗行為
-        bold: {
-          HTMLAttributes: {
-            // 給所有的 strong 標籤預設加上一個 class，方便我們用 CSS 控制
-            class: 'notion-bold-node',
-          },
-        }
-      }),
+      StarterKit,
       Placeholder.configure({
-        placeholder: '添加步驟、描述或備忘紀錄... (支援 Markdown 語法如 # 標題、**加粗**)',
+        placeholder: '添加描述或筆記...',
       }),
     ],
-    // 💡 注入自訂快捷鍵與行為
+    content: '',
     editorProps: {
-      handleKeyDown: (view, event) => {
-        // 監聽 Ctrl + B (Windows) 或 Cmd + B (Mac)
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
-          event.preventDefault(); // 阻止瀏覽器預設的加粗
-
-          const { state } = view;
-          const { selection } = state;
-          const { empty, from } = selection;
-
-          // 情況 A: 如果使用者沒有選中任何文字，直接按下 Ctrl+B
-          if (empty) {
-            // 1. 使用 editor 核心命令安全地在當前光標處插入 ****
-            editor.commands.insertContent('****');
-            
-            // 2. 將光標精準向左移動 2 個字元，讓它乖乖待在 **** 的正中間
-            // from + 2 就是剛好在第二個 * 後面的位置
-            editor.commands.setTextSelection(from + 2);
-            return true;
-          }
-          
-          // 情況 B: 如果選中了文字，則執行標準加粗 toggle
-          editor.commands.toggleBold();
-          return true;
-        }
-        return false;
-      },
       attributes: {
-        class: 'prose dark:prose-invert focus:outline-none max-w-none',
-      }
+        class: 'prose prose-sm dark:prose-invert focus:outline-none max-w-none min-h-[150px] text-sm text-gray-800 dark:text-zinc-200',
+      },
     },
+    // 當編輯器失去焦點時，自動保存內容到後端
     onBlur: ({ editor }) => {
       const htmlContent = editor.getHTML();
-      updateTaskField('content', htmlContent);
-    },
-  }, []);
+      // 如果內容沒有變，就不要打 API
+      if (selectedTask && selectedTask.content !== htmlContent) {
+        updateTaskField('content', htmlContent);
+      }
+    }
+  });
 
-  // 当选中的任务改变时，动态更新本地状态并注入 TipTap
+  // 3. 當選中的任務切換時，同步更新標題與 TipTap 編輯器的內容
   useEffect(() => {
     if (selectedTask) {
       setTaskName(selectedTask.task_name || '');
-      
-      // 3. 任務切換時，動態將新內容塞入 TipTap 編輯器
       if (editor) {
         editor.commands.setContent(selectedTask.content || '');
       }
     }
-  }, [selectedTask, editor]);
+  }, [selectedTaskId, selectedTask, editor]);
 
-  // 如果沒有選中任何任務，顯示佔位提示
+  // 💡 安全防護：如果沒有選中任何任務，直接優雅阻斷渲染，避免元件內部噴出 TypeError
   if (!selectedTask) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8 text-gray-400 dark:text-gray-500">
-        Select a task to view details
+      <div className="flex-1 h-full flex items-center justify-center text-gray-400 dark:text-zinc-500 bg-gray-50 dark:bg-zinc-900/50 text-sm">
+        請選取任務以查看詳細資訊
       </div>
     );
   }
 
-  // 核心统一更新字段方法 (整合 Dev 模式与生产 API)
+  // 4. 實時更新後端資料庫欄位的核心函式
   const updateTaskField = async (fieldName, value) => {
+    if (!selectedTask) return;
+    // 如果值沒變，直接返回
     if (selectedTask[fieldName] === value) return;
 
-    const updatedUpdates = {
-      task_name: fieldName === 'task_name' ? value : selectedTask.task_name,
-      content: fieldName === 'content' ? value : selectedTask.content,
+    // 構建符合後端 API 規範的 Payload 結構
+    const updatedFields = {
+      task_name: fieldName === 'task_name' ? value : (selectedTask.task_name || ''),
+      content: fieldName === 'content' ? value : (selectedTask.content || ''),
       deadline: fieldName === 'deadline' ? value : selectedTask.deadline,
-      priority: fieldName === 'priority' ? value : selectedTask.priority,
-      category_name: fieldName === 'category_name' ? value : selectedTask.category_name,
+      priority: fieldName === 'priority' ? value : (selectedTask.priority || 'none'),
+      category_id: fieldName === 'category_id' ? value : selectedTask.category_id,
+      status: fieldName === 'status' ? value : (selectedTask.status || 'pending')
     };
 
     try {
-      if (process.env.NODE_ENV === 'development') {
-        dispatch({
-          type: 'UPDATE_TASK',
-          payload: { taskId: selectedTask.id, updates: updatedUpdates }
-        });
-        showSuccess(`Task ${fieldName} updated successfully (Dev Mode)`);
-        return;
-      }
-
-      await taskApi.updateTask(selectedTask.id, updatedUpdates);
+      // 呼叫真實後端 API 進行更新
+      await taskApi.updateTask(selectedTask.id, updatedFields);
+      
+      // 同步更新前端全域 Context 的狀態
       dispatch({
         type: 'UPDATE_TASK',
-        payload: { taskId: selectedTask.id, updates: updatedUpdates }
+        payload: {
+          id: selectedTask.id,
+          ...updatedFields
+        }
       });
-      showSuccess('Task updated successfully');
+      showSuccess('任務已自動更新');
     } catch (error) {
-      console.error(`Failed to update ${fieldName}:`, error);
-      showError('Failed to update task');
-      // 失败时回滚对应状态
-      if (fieldName === 'task_name') setTaskName(selectedTask.task_name || '');
-      if (fieldName === 'content' && editor) editor.commands.setContent(selectedTask.content || '');
+      console.error(`Failed to update task ${fieldName}:`, error);
+      showError('自動儲存失敗，請檢查網路連線');
     }
   };
 
-  // 勾選/取消勾選任務狀態
+  // 5. 處理切換完成狀態
   const handleToggleComplete = () => {
-    const nextStatus = selectedTask.status === 'completed' ? 'pending' : 'completed';
-    dispatch({ type: 'TOGGLE_TASK', payload: selectedTask.id });
-    showSuccess(`${selectedTask.id} marked as ${nextStatus} (Dev Mode)`);
+    const newStatus = (selectedTask.status === 'completed' || selectedTask.completed) ? 'pending' : 'completed';
+    updateTaskField('status', newStatus);
   };
-  
-  // 刪除任務
-  const handleDeleteTask = async () => {
-    if (!selectedTask || !selectedTask.id) return;
-    
-    try {
-      if (process.env.NODE_ENV === 'development') {
-        dispatch({ type: 'DELETE_TASK', payload: selectedTask.id });
-        showSuccess(`${selectedTask.id} deleted successfully (Dev Mode)`);
-        return;
-      }
 
-      await taskApi.deleteTask(selectedTask.id);
-      dispatch({ type: 'DELETE_TASK', payload: selectedTask.id });
-      showSuccess('Task deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete task:', error);
-      showError('Failed to delete task');
+  // 6. 處理刪除任務
+  const handleDeleteTask = async () => {
+    if (confirm('確定要刪除此任務嗎？')) {
+      try {
+        await taskApi.deleteTask(selectedTask.id);
+        dispatch({ type: 'DELETE_TASK', payload: selectedTask.id });
+        showSuccess('任務已刪除');
+      } catch (error) {
+        showError('刪除任務失敗');
+      }
     }
   };
-  
+
+  const isCompleted = selectedTask.status === 'completed' || selectedTask.completed;
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-900 border-l border-gray-100 dark:border-zinc-800 text-gray-800 dark:text-zinc-100">
+    <div className="w-96 border-l border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 h-full flex flex-col">
       
-      {/* 1. 頂部小工具功能列 */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-50 dark:border-zinc-800/50">
-        <div className="flex items-center space-x-4 flex-1">
-          {/* Tickbox */}
-          <button
-            onClick={handleToggleComplete}
-            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors flex-shrink-0 ${
-              selectedTask.status === 'completed'
-                ? 'bg-green-500 border-green-500 text-white'
-                : 'border-gray-300 dark:border-zinc-600 hover:border-gray-400'
-            }`}
-          >
-            {selectedTask.status === 'completed' && <CheckIcon className="h-3.5 w-3.5 stroke-[3]" />}
-          </button>
-
-          {/* 日期選擇器 */}
-          <div className="relative flex items-center text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer group max-w-max">
-            <CalendarIcon className="h-5 w-5 flex-shrink-0 mr-1" />
-            <input
-              type="date"
-              name="deadline"
-              value={selectedTask.deadline || ''}
-              onChange={(e) => updateTaskField('deadline', e.target.value)}
-              className="p-1 border border-transparent hover:border-gray-300 dark:hover:border-zinc-600 rounded-md bg-transparent dark:bg-transparent text-sm focus:outline-none focus:border-gray-300"
-            />
+      {/* 1. 頂部工具列區塊 */}
+      <div className="h-14 border-b border-gray-200 dark:border-zinc-800 px-6 flex items-center justify-between flex-shrink-0 text-gray-500 dark:text-zinc-400">
+        <button 
+          onClick={handleToggleComplete}
+          className={`flex items-center space-x-1.5 text-xs font-medium px-2 py-1 rounded transition-colors ${
+            isCompleted 
+              ? 'bg-green-50 text-green-600 dark:bg-green-900/10 dark:text-green-400' 
+              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-700'
+          }`}
+        >
+          <div className={`h-4 w-4 rounded border flex items-center justify-center ${
+            isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 dark:border-zinc-600'
+          }`}>
+            {isCompleted && <CheckIcon className="h-2.5 w-2.5 stroke-[3]" />}
           </div>
-        </div>
+          <span>{isCompleted ? '已完成' : '標記完成'}</span>
+        </button>
 
-        {/* 工具列右側：其餘操作功能圖標區 */}
-        <div className="flex items-center space-x-4 text-gray-400 dark:text-zinc-500">
-          {/* 優先級 */}
-          <div className="relative flex items-center group">
-            <select
-              name="priority"
-              value={selectedTask.priority || 'none'}
-              onChange={(e) => updateTaskField('priority', e.target.value)}
-              className="p-1 border border-transparent hover:border-gray-300 dark:hover:border-zinc-600 rounded-md bg-transparent dark:bg-transparent text-sm focus:outline-none focus:border-gray-300"
-            >
-              <option value="none">none</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-
-          {/* 分類資料夾 */}
-          <div className="relative flex items-center group">
-            <select
-              name="category_name"
-              value={selectedTask.category_name || 'inbox'}
-              onChange={(e) => updateTaskField('category_name', e.target.value)}
-              className="p-1 border border-transparent hover:border-gray-300 dark:hover:border-zinc-600 rounded-md bg-transparent dark:bg-transparent text-sm focus:outline-none focus:border-gray-300"
-            >
-              {categories.map(category => (
-                <option key={category.id} value={category.id}>{category.name}</option>
-              ))}
-            </select>
-          </div>
-          
+        <div className="flex items-center space-x-4">
           <div className="w-px h-4 bg-gray-200 dark:bg-zinc-800"></div>
-
           <button 
             onClick={handleDeleteTask}
             className="hover:text-red-500 dark:hover:text-red-400 transition-colors"
-            title="Delete Task"
+            title="刪除任務"
           >
             <TrashIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
 
-      {/* 下方主要內容大畫布 */}
-      <div className="flex-1 px-8 py-6 flex flex-col space-y-4 overflow-y-auto">
+      {/* 2. 下方主要內容滾動面板 */}
+      <div className="flex-1 px-6 py-6 flex flex-col space-y-5 overflow-y-auto">
         
-        {/* 2. 獨立出來的大標題 Inline 輸入區 */}
+        {/* 大標題 Inline 輸入區 */}
         <div className="w-full">
           <input
             type="text"
@@ -255,21 +176,80 @@ export default function TaskDetail() {
             onBlur={() => updateTaskField('task_name', taskName.trim())}
             onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
             placeholder="任務名稱"
-            className={`w-full bg-transparent text-2xl font-bold focus:outline-none border-b border-transparent focus:border-gray-100 dark:focus:border-zinc-800 pb-1 transition-colors ${
-              selectedTask.status === 'completed' 
-                ? 'line-through text-gray-400 dark:text-zinc-500 decoration-gray-400/70' 
-                : 'text-gray-900 dark:text-zinc-50'
+            className={`w-full bg-transparent text-xl font-bold focus:outline-none border-b border-transparent focus:border-gray-100 dark:focus:border-zinc-800 pb-1 transition-colors text-black dark:text-white ${
+              isCompleted ? 'line-through text-gray-400 dark:text-zinc-500 decoration-gray-400' : ''
             }`}
           />
         </div>
 
-        {/* 4. 💡 替換成 TipTap 實時渲染編輯區 */}
-        <div className="flex-1 flex flex-col pt-2 tiptap-wrapper">
-          <EditorContent editor={editor} />
+        {/* 屬性設定網格區 (分類、截止日期、優先級) */}
+        <div className="space-y-3 bg-gray-50/50 dark:bg-zinc-800/20 p-3 rounded-lg border border-gray-100 dark:border-zinc-800/50">
+          
+          {/* 分類資料夾選擇 */}
+          <div className="flex items-center text-sm">
+            <span className="w-20 text-gray-400 dark:text-zinc-500">分類</span>
+            <select
+              name="category_id"
+              value={selectedTask.category_id || ''} 
+              onChange={(e) => updateTaskField('category_id', e.target.value)} 
+              className="p-1 text-xs border border-transparent hover:border-gray-200 dark:hover:border-zinc-700 rounded bg-transparent dark:bg-transparent text-gray-700 dark:text-zinc-300 focus:outline-none focus:bg-white dark:focus:bg-zinc-800"
+            >
+              <option value="">未分類 (Inbox)</option>
+              {Array.isArray(categories) && categories.map(category => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 截止日期選擇 */}
+          <div className="flex items-center text-sm">
+            <span className="w-20 text-gray-400 dark:text-zinc-500">截止日期</span>
+            <div className="flex items-center text-gray-700 dark:text-zinc-300 group relative">
+              <CalendarIcon className="h-4 w-4 mr-1.5 text-gray-400" />
+              <input
+                type="date"
+                value={selectedTask.deadline ? selectedTask.deadline.split('T')[0] : ''}
+                onChange={(e) => updateTaskField('deadline', e.target.value || null)}
+                className="bg-transparent text-xs text-gray-700 dark:text-zinc-300 focus:outline-none border border-transparent rounded p-0.5 hover:border-gray-200 dark:hover:border-zinc-700"
+              />
+            </div>
+          </div>
+
+          {/* 優先級選擇 */}
+          <div className="flex items-center text-sm">
+            <span className="w-20 text-gray-400 dark:text-zinc-500">優先級</span>
+            <select
+              value={selectedTask.priority || 'none'}
+              onChange={(e) => updateTaskField('priority', e.target.value)}
+              className={`p-1 text-xs border border-transparent rounded bg-transparent dark:bg-transparent focus:outline-none font-medium ${
+                selectedTask.priority === 'high' 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : selectedTask.priority === 'medium' 
+                    ? 'text-yellow-600 dark:text-yellow-400' 
+                    : selectedTask.priority === 'low' 
+                      ? 'text-blue-600 dark:text-blue-400' 
+                      : 'text-gray-500 dark:text-zinc-400'
+              }`}
+            >
+              <option value="none">無優先級</option>
+              <option value="low">低優先級 (Low)</option>
+              <option value="medium">中優先級 (Medium)</option>
+              <option value="high">高優先級 (High)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 3. TipTap 豐富文字編輯器區域 */}
+        <div className="flex-1 flex flex-col min-h-[200px]">
+          <div className="text-xs font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+            備註內容
+          </div>
+          <div className="flex-1 border border-gray-100 dark:border-zinc-800 rounded-lg p-4 bg-gray-50/30 dark:bg-zinc-800/10 overflow-y-auto">
+            <EditorContent editor={editor} />
+          </div>
         </div>
 
       </div>
-
     </div>
   );
 }

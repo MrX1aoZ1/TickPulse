@@ -55,34 +55,37 @@ export function TaskProvider({ children }) {
      */
     const fetchInitialData = async () => {
       try {
-        // Fetch tasks from the API
+        // Fetch tasks
         const tasks = await taskApi.getTasks();
         if (Array.isArray(tasks)) {
-          dispatch({ type: 'SET_TASKS', payload: tasks }); // Update state with fetched tasks
+          dispatch({ type: 'SET_TASKS', payload: tasks });
         }
         
-        // Fetch categories from the API
+        // Fetch categories
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
-          // Transform categories to a consistent format
+          // 對齊後端欄位：將資料庫的 id 和 category_name 映射給前端
           const transformedCategories = categories.map(cat => ({
-            id: cat.category_name || cat.category_id?.toString() || `unnamed-${uuidv4()}`, // Ensure unique ID
-            name: cat.category_name || 'Unnamed Category'
+            id: cat.id, 
+            name: cat.category_name 
           }));
-          
-          // Ensure 'Inbox' category exists
-          if (!transformedCategories.find(c => c.id === 'inbox')) {
-            transformedCategories.unshift({ id: 'inbox', name: 'Inbox' });
-          }
           
           dispatch({
             type: 'SET_CATEGORIES',
-            payload: transformedCategories // Update state with fetched categories
+            payload: transformedCategories
           });
+
+          // 【關鍵】動態找出這個使用者的預設 Inbox（透過前綴 inbox_）
+          const userInbox = transformedCategories.find(c => c.id && c.id.toString().startsWith('inbox_'));
+          
+          // 如果找到了，就把選中的分類動態設為他的 Inbox
+          if (userInbox) {
+             dispatch({ type: 'SELECT_CATEGORY', payload: userInbox.id });
+          }
         }
       } catch (error) {
         console.error('Failed to fetch initial data:', error);
-        showError('Failed to load tasks and categories'); // Display error to user
+        showError('Failed to load tasks and categories');
       }
     };
     
@@ -141,28 +144,25 @@ export function useTasks() {
 
 
 async function fetchWithAuth(endpoint, options = {}) {
-  const token = localStorage.getItem('accessToken');
-  
-  if (!token) {
-    throw new Error('No authentication token found. Please log in.');
-  }
-  
+  // 🎯 1. 移除了所有 localStorage 和 token 檢查的程式碼
+  // 因為 Cookie 路線不再需要手動抓取 Token 塞進 Header
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
     ...options.headers,
   };
-  
+
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
+      // 🔥 2. 最核心的修改：強制瀏覽器在發送請求時，自動攜帶後端的 Session Cookie
+      credentials: 'include', 
     });
-    
-    if (response.status === 403) {
-      // Clear invalid token
-      localStorage.removeItem('accessToken');
-      throw new Error('Authentication failed. Please log in again.');
+
+    // 🎯 3. 處理未登入或驗證過期的狀況 (401 或 403)
+    if (response.status === 401 || response.status === 403) {
+      // 發現未授權，統一拋出錯誤，讓外層的初始化 Effect 可以捕獲
+      throw new Error('UNAUTHORIZED');
     }
     
     if (!response.ok) {
@@ -182,39 +182,48 @@ async function fetchWithAuth(endpoint, options = {}) {
  */
 export const taskApi = {
   getTasks: async () => fetchWithAuth('/api/tasks'),
+
   getTaskById: async (id) => fetchWithAuth(`/api/tasks/${id}`),
+
   createTask: async (taskData) =>
     fetchWithAuth('/api/tasks', {
       method: 'POST',
       body: JSON.stringify(taskData),
     }),
+
   updateTask: async (id, updates) =>
     fetchWithAuth(`/api/tasks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     }),
+
   deleteTask: async (id) =>
     fetchWithAuth(`/api/tasks/${id}`, { method: 'DELETE' }),
+
   updateTaskStatus: async (id, status) =>
     fetchWithAuth(`/api/tasks/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status }),
     }),
+
   updateTaskPriority: async (id, priority) =>
     fetchWithAuth(`/api/tasks/${id}/priority`, {
       method: 'PUT',
       body: JSON.stringify({ priority }),
     }),
+
   updateTaskDeadline: async (id, deadline) =>
     fetchWithAuth(`/api/tasks/${id}/deadline`, {
       method: 'PUT',
       body: JSON.stringify({ deadline }),
     }),
-  updateTaskCategory: async (id, category_name) =>
+
+  updateTaskCategory: async (id, category_id) =>
     fetchWithAuth(`/api/tasks/${id}/category`, {
       method: 'PUT',
-      body: JSON.stringify({ category_name }),
+      body: JSON.stringify({ category_id }),
     }),
+
   updateTaskContent: async (id, content) =>
     fetchWithAuth(`/api/tasks/${id}/content`, { // Corrected path from /tasks to /api/tasks for consistency
       method: 'PUT',
@@ -222,7 +231,7 @@ export const taskApi = {
     }),
 
   // Category related API calls
-  getAllCategories: async () => {
+  getAllCategories: async (id) => {
     try {
       return await fetchWithAuth('/api/tasks/category');
     } catch (error) {
@@ -241,10 +250,10 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ category_name: categoryName }),
     }),
-  updateCategory: async (id, categoryName) =>
+  updateCategory: async (id, category_id) =>
     fetchWithAuth(`/api/tasks/category/${id}`, { // Changed to match backend route
       method: 'PUT',
-      body: JSON.stringify({ category_name: categoryName }),
+      body: JSON.stringify({ category_id: category_id }),
     }),
   deleteCategory: async (id) =>
     fetchWithAuth(`/api/tasks/category/${id}`, { method: 'DELETE' }), // Changed to match backend route
@@ -253,8 +262,8 @@ export const taskApi = {
 // Initial state for the reducer
 const initialState = {
   tasks: [],
-  categories: [{ id: 'inbox', name: 'Inbox' }], // Changed from projects to categories
-  selectedCategoryId: 'inbox', 
+  categories: [], 
+  selectedCategoryId: null, 
   selectedTaskId: null,
   selectedView: 'filter', // Changed from 'category' to 'filter'
   activeFilter: 'all', // Set default filter to 'all'
@@ -307,9 +316,7 @@ const taskReducer = (state, action) => {
       return {
         ...initialState,
         ...(action.payload || {}),
-        categories: action.payload?.categories?.find(c => c.id === 'inbox')
-                  ? action.payload.categories
-                  : [...(action.payload?.categories || []), { id: 'inbox', name: 'Inbox' }].filter((c, i, arr) => arr.findIndex(t => t.id === c.id) === i),
+        categories: action.payload?.categories || [],
       };
 
     case 'ADD_TASK': {
@@ -327,7 +334,7 @@ const taskReducer = (state, action) => {
         content: action.payload.content || '',
         deadline: action.payload.deadline,
         priority: action.payload.priority || 'low',
-        category_name: action.payload.categoryName,
+        category_id: action.payload.categoryId || state.selectedCategoryId,
         status: 'pending',
         completed: false,
         createdAt: new Date().toISOString(),
