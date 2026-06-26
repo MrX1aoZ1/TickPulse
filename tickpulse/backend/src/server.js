@@ -13,11 +13,9 @@ const createSubtaskTable = require('./models/SubTask');
 const createTaskTable = require('./models/Task');
 const createUserTable = require('./models/User');
 const createUserAuthTable = require('./models/UserAuth');
-const createTimerTable = require('./models/Timer');
 
 // Initiallize the Routes
 const authRoutes = require('./routes/authRoutes');
-const apiRoutes = require('./routes/apiRoutes');
 
 // Global env.
 app.use(express.json());
@@ -32,6 +30,7 @@ app.use(cors({
 }));
 
 app.use(session({
+    key: 'connect.sid',
     store: sessionStore,
     secret: process.env.ACCESS_TOKEN_SECRET,
     resave: false,
@@ -52,7 +51,7 @@ app.use(session({
         await createCategoryTable();
         await createTaskTable();
         await createSubtaskTable();
-        await createTimerTable();
+        //await createTimerTable();
         //console.log('All tables created successfully');
     } catch (error) {
         console.error('Error during initialization:', error);
@@ -72,13 +71,10 @@ app.get('/api/data', (req, res) => {
 
 // Routes
 const taskRoutes = require("./routes/taskRoutes");
-const timerRoutes = require("./routes/timerRoutes");
-const licenseKeyRoutes = require("./routes/licenseKeyRoutes");
+// const timerRoutes = require("./routes/timerRoutes");
+// const licenseKeyRoutes = require("./routes/licenseKeyRoutes");
 app.use('/auth', authRoutes);
-app.use('/api', apiRoutes);
 app.use("/api/tasks", taskRoutes);
-app.use("/api/timers", timerRoutes);
-app.use("/api/license", licenseKeyRoutes)
 
 
 // Start Server

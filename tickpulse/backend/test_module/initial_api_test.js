@@ -155,50 +155,6 @@ async function runTests() {
         }
 
         console.log('\n🎊 恭喜！精簡版核心功能自動化測試【全部通過】！');
-        // // ---------------------------------------------------------
-        // // 測試 2：邊界條件 - 漏傳必填欄位
-        // // ---------------------------------------------------------
-        // console.log('\n▶️ [Test 2] 測試防呆機制 (漏傳 task_name)...');
-        // const res2 = await fetch(API_BASE, {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({ id: crypto.randomUUID() }) // 沒傳 task_name
-        // });
-        // if (res2.status === 400) {
-        //     console.log('✅ 通過：伺服器成功攔截錯誤並回傳 400 Bad Request。');
-        // } else {
-        //     console.error('❌ 失敗：伺服器沒有攔截到錯誤。狀態碼:', res2.status);
-        // }
-
-        // // ---------------------------------------------------------
-        // // 測試 3：演算法測試 - O(1) 浮點數拖拽排序機制
-        // // ---------------------------------------------------------
-        // console.log('\n▶️ [Test 3] 測試浮點數拖拽排序演算...');
-        // const res3 = await fetch(`${API_BASE}/${testTaskId}/reorder`, {
-        //     method: 'PUT',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({
-        //         prev_order: 100, // 假設被拖到 100 和 200 之間
-        //         next_order: 200
-        //     })
-        // });
-        // const data3 = await res3.json();
-        // if (res3.status === 200 && data3.sort_order === 150) {
-        //     console.log('✅ 通過：伺服器成功算出平均數 150，沒有引發整表更新！');
-        // } else {
-        //     console.error('❌ 失敗：排序計算錯誤。', data3);
-        // }
-
-        // // ---------------------------------------------------------
-        // // 測試 4：資料清理 - 刪除測試任務
-        // // ---------------------------------------------------------
-        // console.log('\n▶️ [Test 4] 測試資料刪除...');
-        // const res4 = await fetch(`${API_BASE}/${testTaskId}`, { method: 'DELETE' });
-        // if (res4.status === 200) {
-        //     console.log('✅ 通過：資料刪除成功，測試環境恢復。');
-        // } else {
-        //     console.error('❌ 失敗：刪除失敗。');
-        // }
 
         console.log('\n🎉 所有 API 正確性測試完畢！');
     } catch (error) {

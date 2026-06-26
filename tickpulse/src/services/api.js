@@ -4,8 +4,7 @@ import { formatErrorMessage, logError } from '@/utils/errorHandling';
 const API_BASE_URL = 'http://localhost:3000';
 
 /**
- * Helper function for making authenticated API requests.
- * It automatically includes the JWT token from localStorage in the Authorization header.
+ * Helper function for making authenticated API requests (with session cookie)
  * It also handles common error scenarios and formats error messages.
  * @async
  * @param {string} endpoint - The API endpoint (e.g., '/tasks').
@@ -15,43 +14,38 @@ const API_BASE_URL = 'http://localhost:3000';
  */
 async function fetchWithAuth(endpoint, options = {}) {
   try {
-    // Get the token from localStorage
-    const token = localStorage.getItem('accessToken');
-    
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
     
-    // Add auth token if available
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
+      // 🎯 關鍵：強制攜帶 Cookie，不論是跨網域(CORS)還是同網域，後端 Session 才能對接成功
+      credentials: 'include', 
     });
     
-    // Handle HTTP error responses
+    // 處理 HTTP 錯誤回應
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       
-      // Create an error object with additional properties
       const error = new Error(errorData.message || `HTTP error ${response.status}`);
       error.status = response.status;
       error.code = errorData.code;
       error.data = errorData;
+      
+      // 💡 溫馨提示：如果未來想實作「401 未授權自動跳轉登入」，可以在這裡攔截處理
+      if (response.status === 401 && typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
       
       throw error;
     }
     
     return response.json();
   } catch (error) {
-    // Log the error with context
     logError(`API Call: ${endpoint}`, error);
-    
-    // Rethrow with formatted message
     const formattedError = new Error(formatErrorMessage(error));
     formattedError.originalError = error;
     throw formattedError;

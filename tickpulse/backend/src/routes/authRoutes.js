@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { signUp, login, logout, googleLogin, googleCallback } = require('../controllers/authController');
+const { signUp, login, logout, googleLogin, googleCallback, checkAuthStatus } = require('../controllers/authController');
 const { checkNotAuthenticated } = require('../middleware/authMiddleware');
+
+// Chek Login Status
+router.get('/check', checkAuthStatus);
 
 // Local Auth Routes
 router.post('/sign-up', checkNotAuthenticated, signUp);

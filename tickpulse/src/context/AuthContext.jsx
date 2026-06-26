@@ -14,30 +14,30 @@ export function AuthProvider({ children }) {
   const router = useRouter();
   const { showError } = useToast();
 
-  // Check authentication status on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem('accessToken');
-        
-        if (!token) {
-          setUser(null);
-          setLoading(false);
-          return;
-        }
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/auth/check', {
+        method: 'GET',
+        credentials: 'include', // 攜帶 Cookie
+      });
 
-        // You can add token validation logic here if needed
-        // For now, we'll just set a basic user object based on token existence
-        setUser({ authenticated: true });
-      } catch (error) {
-        console.error('Auth check failed:', error);
+      if (response.ok) {
+        const data = await response.json();
+        // 假設後端回傳 { authenticated: true, user: { id: 1, email: "..." } }
+        setUser(data.user || { authenticated: true });
+      } else {
         setUser(null);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('後端 Session 驗證失敗:', error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    checkAuth();
+  useEffect(() => {
+    checkAuthStatus();
   }, []);
 
   // Login function
@@ -47,7 +47,8 @@ export function AuthProvider({ children }) {
       const response = await fetch('http://localhost:3000/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        credentials: 'include', // 讓後端發放的 Set-Cookie 順利存入瀏覽器
       });
 
       const data = await response.json();
@@ -56,8 +57,7 @@ export function AuthProvider({ children }) {
         throw new Error(data.message || 'Login failed');
       }
 
-      localStorage.setItem('accessToken', data.accessToken);
-      setUser({ authenticated: true });
+      setUser(data.user || { authenticated: true });
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -69,14 +69,22 @@ export function AuthProvider({ children }) {
   };
 
   // Logout function
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    setUser(null);
-    router.push('/login');
+  const logout = async () => {
+    try {
+      await fetch('http://localhost:3000/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      setUser(null);
+      router.push('/login');
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, checkAuthStatus }}>
       {children}
     </AuthContext.Provider>
   );
