@@ -44,27 +44,20 @@ export function TaskProvider({ children }) {
   
   // Effect to load state from localStorage on component mount
   useEffect(() => {
-    const savedState = loadState(); // Attempt to load saved state from localStorage
+    const savedState = loadState();
     if (savedState) {
-      dispatch({ type: 'HYDRATE_STATE', payload: savedState }); // Restore saved state
+      dispatch({ type: 'HYDRATE_STATE', payload: savedState });
     }
     
-    /**
-     * Fetches initial tasks and categories from the backend.
-     * This is typically done when the application loads or user logs in.
-     */
     const fetchInitialData = async () => {
       try {
-        // Fetch tasks
         const tasks = await taskApi.getTasks();
         if (Array.isArray(tasks)) {
           dispatch({ type: 'SET_TASKS', payload: tasks });
         }
         
-        // Fetch categories
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
-          // 對齊後端欄位：將資料庫的 id 和 category_name 映射給前端
           const transformedCategories = categories.map(cat => ({
             id: cat.id, 
             name: cat.category_name 
@@ -75,10 +68,7 @@ export function TaskProvider({ children }) {
             payload: transformedCategories
           });
 
-          // 【關鍵】動態找出這個使用者的預設 Inbox（透過前綴 inbox_）
           const userInbox = transformedCategories.find(c => c.id && c.id.toString().startsWith('inbox_'));
-          
-          // 如果找到了，就把選中的分類動態設為他的 Inbox
           if (userInbox) {
              dispatch({ type: 'SELECT_CATEGORY', payload: userInbox.id });
           }
@@ -89,12 +79,9 @@ export function TaskProvider({ children }) {
       }
     };
     
-    // Check if user is authenticated (token exists) before fetching data
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      fetchInitialData(); // Fetch data if authenticated
-    }
-  }, [showError]); // Dependency: showError (though typically stable, good practice)
+    // 🚨 關鍵修正：移除了 token 檢查，直接呼叫！
+    fetchInitialData(); 
+  }, [showError]);
 
   // Effect to save state to localStorage whenever the state changes
   useEffect(() => {
@@ -107,16 +94,14 @@ export function TaskProvider({ children }) {
    */
   const refreshTasks = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return; // Do not attempt if not authenticated
-      
-      const tasks = await taskApi.getTasks(); // Fetch latest tasks
+      // 🚨 關鍵修正：刪除了對 localStorage token 的依賴
+      const tasks = await taskApi.getTasks(); 
       if (Array.isArray(tasks)) {
-        dispatch({ type: 'SET_TASKS', payload: tasks }); // Update state with refreshed tasks
+        dispatch({ type: 'SET_TASKS', payload: tasks }); 
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error);
-      showError('Failed to refresh tasks'); // Display error to user
+      showError('Failed to refresh tasks'); 
     }
   };
   
@@ -144,8 +129,6 @@ export function useTasks() {
 
 
 async function fetchWithAuth(endpoint, options = {}) {
-  // 🎯 1. 移除了所有 localStorage 和 token 檢查的程式碼
-  // 因為 Cookie 路線不再需要手動抓取 Token 塞進 Header
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -155,13 +138,12 @@ async function fetchWithAuth(endpoint, options = {}) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      // 🔥 2. 最核心的修改：強制瀏覽器在發送請求時，自動攜帶後端的 Session Cookie
       credentials: 'include', 
     });
 
-    // 🎯 3. 處理未登入或驗證過期的狀況 (401 或 403)
+    console.log(response);
+
     if (response.status === 401 || response.status === 403) {
-      // 發現未授權，統一拋出錯誤，讓外層的初始化 Effect 可以捕獲
       throw new Error('UNAUTHORIZED');
     }
     
@@ -181,82 +163,92 @@ async function fetchWithAuth(endpoint, options = {}) {
  * @description An object containing functions for interacting with the task-related backend API endpoints.
  */
 export const taskApi = {
-  getTasks: async () => fetchWithAuth('/api/tasks'),
-
-  getTaskById: async (id) => fetchWithAuth(`/api/tasks/${id}`),
-
+  getTasks: async () => 
+    fetchWithAuth('/api/tasks', {
+      method: 'GET',
+      credentials: 'include', 
+    }),
   createTask: async (taskData) =>
     fetchWithAuth('/api/tasks', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', 
       body: JSON.stringify(taskData),
     }),
-
-  updateTask: async (id, updates) =>
-    fetchWithAuth(`/api/tasks/${id}`, {
+  updateTask: async (taskId, updates) =>
+    fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', 
       body: JSON.stringify(updates),
     }),
-
-  deleteTask: async (id) =>
-    fetchWithAuth(`/api/tasks/${id}`, { method: 'DELETE' }),
-
-  updateTaskStatus: async (id, status) =>
-    fetchWithAuth(`/api/tasks/${id}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status }),
+  deleteTask: async (taskId) =>
+    fetchWithAuth(`/api/tasks/${taskId}`, { 
+      method: 'DELETE',
+      credentials: 'include',
     }),
 
-  updateTaskPriority: async (id, priority) =>
-    fetchWithAuth(`/api/tasks/${id}/priority`, {
-      method: 'PUT',
-      body: JSON.stringify({ priority }),
-    }),
+  // updateTaskStatus: async (id, status) =>
+  //   fetchWithAuth(`/api/tasks/${id}/status`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ status }),
+  //   }),
 
-  updateTaskDeadline: async (id, deadline) =>
-    fetchWithAuth(`/api/tasks/${id}/deadline`, {
-      method: 'PUT',
-      body: JSON.stringify({ deadline }),
-    }),
+  // updateTaskPriority: async (id, priority) =>
+  //   fetchWithAuth(`/api/tasks/${id}/priority`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ priority }),
+  //   }),
 
-  updateTaskCategory: async (id, category_id) =>
-    fetchWithAuth(`/api/tasks/${id}/category`, {
-      method: 'PUT',
-      body: JSON.stringify({ category_id }),
-    }),
+  // updateTaskDeadline: async (id, deadline) =>
+  //   fetchWithAuth(`/api/tasks/${id}/deadline`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ deadline }),
+  //   }),
 
-  updateTaskContent: async (id, content) =>
-    fetchWithAuth(`/api/tasks/${id}/content`, { // Corrected path from /tasks to /api/tasks for consistency
-      method: 'PUT',
-      body: JSON.stringify({ content }),
-    }),
+  // updateTaskCategory: async (id, category_id) =>
+  //   fetchWithAuth(`/api/tasks/${id}/category`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ category_id }),
+  //   }),
+
+  // updateTaskContent: async (id, content) =>
+  //   fetchWithAuth(`/api/tasks/${id}/content`, { // Corrected path from /tasks to /api/tasks for consistency
+  //     method: 'PUT',
+  //     body: JSON.stringify({ content }),
+  //   }),
+
+
 
   // Category related API calls
-  getAllCategories: async (id) => {
-    try {
-      return await fetchWithAuth('/api/tasks/category');
-    } catch (error) {
-      // Check if it's the specific 404 error "No categories found"
-      if (error.message && error.message.includes('404') && error.message.includes('No categories found')) {
-        console.warn('API returned 404 for categories (No categories found), treating as empty list.');
-        return []; // Return an empty array if no categories are found for the user
-      }
-      // For any other error, re-throw it to be handled by the caller
-      console.error('Error fetching categories:', error);
-      throw error;
-    }
-  },
-  createCategory: async (categoryName) =>
-    fetchWithAuth('/api/tasks/category', { // Changed to match backend route
-      method: 'POST',
-      body: JSON.stringify({ category_name: categoryName }),
+  getAllCategories: async () => 
+    fetchWithAuth('/api/categories', {
+      method: 'GET',
+      credentials: 'include',
     }),
-  updateCategory: async (id, category_id) =>
-    fetchWithAuth(`/api/tasks/category/${id}`, { // Changed to match backend route
+  createCategory: async (category_name) =>
+    fetchWithAuth('/api/categories', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ name: category_name }),
+    }),
+  updateCategory: async (category_id) =>
+    fetchWithAuth(`/api/categories/${category_id}`, {
       method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
       body: JSON.stringify({ category_id: category_id }),
     }),
-  deleteCategory: async (id) =>
-    fetchWithAuth(`/api/tasks/category/${id}`, { method: 'DELETE' }), // Changed to match backend route
+  deleteCategory: async (category_id) =>
+    fetchWithAuth(`/api/categories/${category_id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
 };
 
 // Initial state for the reducer
@@ -274,13 +266,9 @@ const initialState = {
 // Function to save state to local storage (Client-side only)
 const saveState = (state) => {
   try {
-    // Ensure localStorage is accessed only on the client
     if (typeof window !== 'undefined') {
       const stateToSave = {
-        tasks: state.tasks,
-        categories: state.categories, // Changed from projects to categories
-        selectedCategoryId: state.selectedCategoryId, // Changed from selectedProjectId
-        selectedTaskId: state.selectedTaskId,
+        selectedCategoryId: state.selectedCategoryId, 
         selectedView: state.selectedView,
         activeFilter: state.activeFilter,
       };
@@ -371,7 +359,7 @@ const taskReducer = (state, action) => {
 
     case 'UPDATE_TASK': {
       const updatedTasks = state.tasks.map(task =>
-        task.id === action.payload.taskId
+        task.id === action.payload.id
           ? { ...task, ...action.payload.updates }
           : task
       );

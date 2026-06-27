@@ -1,191 +1,287 @@
 'use client';
 
-import { useTasks } from '@/context/TaskContext';
-import { CheckIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { useState, useEffect } from 'react';
-import { taskApi } from '@/context/TaskContext'; 
-import { useToast } from '@/context/ToastContext'; 
+import { useState } from 'react';
+import { useTasks, taskApi } from '@/context/TaskContext';
+import { useToast } from '@/context/ToastContext';
+import { 
+  PlusIcon,
+  TrashIcon, 
+  NoSymbolIcon, 
+  ArrowUturnLeftIcon 
+} from '@heroicons/react/24/outline';
 
 export default function TaskList() {
-  // 💡 安全防護：確保 tasks 有預設值空陣列，避免 map 報錯
-  const { tasks = [], selectedCategoryId, selectedView, activeFilter, dispatch, selectedTaskId } = useTasks();
+  const { 
+    tasks = [], 
+    dispatch, 
+    selectedView, 
+    selectedCategoryId, 
+    activeFilter 
+  } = useTasks();
   const { showSuccess, showError } = useToast();
-  const [filteredTasks, setFilteredTasks] = useState([]);
+  
+  // 快速新增任務的本地狀態
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 1. 基於後端真實資料進行過濾與排序
-  useEffect(() => {
-    // 終極安全檢查：如果 tasks 不是陣列，直接給空
-    if (!Array.isArray(tasks)) {
-      setFilteredTasks([]);
-      return;
+  // 🎯 輔助函式：將任何後端回傳的日期轉成純粹的 "YYYY-MM-DD" 本地字串（處理 Floating Time）
+  const formatToLocalDateStr = (dateInput) => {
+    if (!dateInput) return null;
+    if (typeof dateInput === 'string' && dateInput.length === 10) return dateInput;
+    
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return null;
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const filteredTasks = tasks.filter(task => {
+    const taskDateStr = formatToLocalDateStr(task.deadline);
+
+
+    if (selectedView === 'category') {
+      return (
+        task.category_id === selectedCategoryId && 
+        task.status !== 'deleted' && 
+        task.status !== 'cancelled'
+      );
     }
 
-    let result = [...tasks];
-
-    // 分類視圖過濾
-    if (selectedView === 'category') {
-      // 💡 關鍵修正：後端現在關聯的是 category_id
-      result = result.filter(task => task && String(task.category_id) === String(selectedCategoryId));
-    } 
-    // 預設過濾器視圖 (All / Today / Completed)
-    else if (selectedView === 'filter') {
-      if (activeFilter === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
-        result = result.filter(task => task && task.deadline && task.deadline.startsWith(todayStr));
-      } else if (activeFilter === 'completed') {
-        // 後端可能是 status === 'completed' 或是 completed == 1/true
-        result = result.filter(task => task && (task.status === 'completed' || task.completed));
-      } else if (activeFilter === 'all') {
-        // 顯示全部未完成的任務
-        result = result.filter(task => task && task.status !== 'completed' && !task.completed);
+    if (selectedView === 'filter') {
+      const todayStr = formatToLocalDateStr(new Date());
+      
+      switch (activeFilter) {
+        case 'all':
+          return (
+            task.status !== 'deleted' && 
+            task.status !== 'cancelled' && 
+            task.status !== 'completed'
+          );
+          
+        case 'today':
+          // Today 視圖：今天的任務，且必須是活著的任務
+          return (
+            taskDateStr === todayStr && 
+            task.status !== 'deleted' && 
+            task.status !== 'cancelled'
+          );
+          
+        case 'next7': {
+          if (!taskDateStr || task.status === 'deleted' || task.status === 'cancelled') return false;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const sevenDaysLater = new Date();
+          sevenDaysLater.setDate(today.getDate() + 7);
+          sevenDaysLater.setHours(23, 59, 59, 999);
+          const taskDate = new Date(taskDateStr + 'T00:00:00');
+          return taskDate >= today && taskDate <= sevenDaysLater;
+        }
+        
+        case 'completed': 
+          return task.status === 'completed';
+          
+        case 'cancelled': 
+          return task.status === 'cancelled';
+          
+        case 'deleted': 
+          return task.status === 'deleted';
+          
+        default: 
+          return true;
       }
     }
+    return true;
+  });
 
-    // 排序：高優先級在前
-    result.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1, none: 0 };
-      const pA = priorityOrder[a?.priority] || 0;
-      const pB = priorityOrder[b?.priority] || 0;
-      return pB - pA;
-    });
-
-    setFilteredTasks(result);
-  }, [tasks, selectedView, selectedCategoryId, activeFilter]);
-
-  // 2. 處理新增任務
+  // 🎯 處理快速新增任務
   const handleAddTask = async (e) => {
     e.preventDefault();
-    const trimmedTitle = newTaskTitle.trim();
-    if (!trimmedTitle) return;
+    const title = newTaskTitle.trim();
+    if (!title || isSubmitting) return;
 
+    setIsSubmitting(true);
     try {
-      // 傳送給後端的欄位：title
-      const response = await taskApi.createTask({
-        title: trimmedTitle,
-        categoryId: selectedView === 'category' ? selectedCategoryId : null
-      });
+      const targetCategoryId = selectedView === 'category' ? selectedCategoryId : null;
 
-      // 後端返回新任務後，派發給全域 Context
-      dispatch({ type: 'ADD_TASK', payload: response });
+      const taskData = {
+        task_name: title,
+        category_id: targetCategoryId
+      };
+
+      const savedTask = await taskApi.createTask(taskData);
+      
+      const sanitizedTask = {
+        ...savedTask,
+        status: savedTask.status || 'pending',
+        priority: savedTask.priority || 'none',
+        deadline: savedTask.deadline || null
+      };
+      
+      dispatch({ type: 'ADD_TASK', payload: sanitizedTask });
       setNewTaskTitle('');
-      showSuccess('Task added successfully');
+      showSuccess('Task added!');
     } catch (error) {
-      console.error('Failed to add task:', error);
-      showError('Failed to create task');
+      console.error('Failed to create task:', error);
+      showError(error.message || 'Failed to add task');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // 3. 處理切換任務完成狀態
-  const handleToggleComplete = async (e, task) => {
-    e.stopPropagation(); // 防止觸發選取任務
-    const newStatus = (task.status === 'completed' || task.completed) ? 'pending' : 'completed';
-    
+  // 🎯 處理狀態更新
+  const handleUpdateStatus = async (task, newStatus) => {
+    // 🛡️ 確保能拿到正確的 ID 欄位
+    const targetId = task.id || task.taskId;
+    if (!targetId) {
+      showError('Task ID missing');
+      return;
+    }
+
     try {
-      await taskApi.updateTask(task.id, {
-        task_name: task.task_name,
-        status: newStatus
+      await taskApi.updateTask(targetId, { status: newStatus });
+      dispatch({ 
+        type: 'UPDATE_TASK', 
+        payload: { id: targetId, updates: { status: newStatus } } 
       });
-      dispatch({ type: 'TOGGLE_TASK_STATUS', payload: task.id });
-      showSuccess(newStatus === 'completed' ? 'Task completed!' : 'Task marked as pending');
+      showSuccess(`Task updated`);
     } catch (error) {
       showError('Failed to update task status');
     }
   };
 
-  // 4. 處理刪除任務
-  const handleDeleteTask = async (e, taskId) => {
-    e.stopPropagation();
-    if (confirm('Are you sure you want to delete this task?')) {
-      try {
-        await taskApi.deleteTask(taskId);
-        dispatch({ type: 'DELETE_TASK', payload: taskId });
-        showSuccess('Task deleted');
-      } catch (error) {
-        showError('Failed to delete task');
-      }
+  const getPriorityClass = (priority) => {
+    switch (priority) {
+      case 'high': return 'border-red-500 hover:bg-red-500/10';
+      case 'medium': return 'border-orange-400 hover:bg-orange-400/10';
+      case 'low': return 'border-blue-400 hover:bg-blue-400/10';
+      default: return 'border-zinc-600 hover:bg-zinc-500/10';
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-900">
-      {/* 頂部新增任務輸入框 */}
-      <div className="p-4 border-b border-gray-200 dark:border-zinc-800">
-        <form onSubmit={handleAddTask}>
-          <input
-            type="text"
-            placeholder="Add a task..."
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black dark:text-white"
-          />
+    <div className="flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200">
+      
+      {/* 📥 頂部極簡新增輸入框 */}
+      {selectedView !== 'filter' || (activeFilter !== 'completed' && activeFilter !== 'cancelled' && activeFilter !== 'deleted') ? (
+        <form onSubmit={handleAddTask} className="px-6 pt-4 pb-2">
+          <div className="flex items-center space-x-3 bg-zinc-900/40 border border-zinc-800/80 rounded-lg px-3 py-2 focus-within:border-zinc-700 transition-all">
+            <PlusIcon className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Add a task to this list... (Press Enter)"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              disabled={isSubmitting}
+              className="w-full bg-transparent border-none outline-none text-sm placeholder-zinc-600 text-zinc-200"
+            />
+          </div>
         </form>
-      </div>
+      ) : null}
 
-      {/* 任務列表展示區 */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-zinc-800">
-        {filteredTasks.length > 0 ? (
+      {/* 📜 任務列表主滾動區 */}
+      <div className="flex-1 overflow-y-auto px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+        {filteredTasks.length === 0 ? (
+          <div className="h-48 flex flex-col items-center justify-center text-zinc-600 text-sm">
+            <p className="font-medium">No tasks here.</p>
+            <p className="text-xs text-zinc-700 mt-1">Enjoy your clear day!</p>
+          </div>
+        ) : (
+          
           filteredTasks.map((task) => {
-            if (!task) return null;
-            const isCompleted = task.status === 'completed' || task.completed;
-            const isSelected = String(task.id) === String(selectedTaskId);
+            const isDone = task.status === 'completed';
+            const isTrash = task.status === 'cancelled' || task.status === 'deleted';
 
             return (
               <div
-                key={task.id}
-                onClick={() => dispatch({ type: 'SELECT_TASK', payload: task.id })}
-                className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
-                  isSelected ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/30'
-                }`}
+                key={task.id || task.taskId}
+                className="group flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-zinc-900/40 border border-transparent hover:border-zinc-900/60 transition-all duration-150"
               >
-                <div className="flex items-center space-x-3 min-w-0">
-                  <button
-                    onClick={(e) => handleToggleComplete(e, task)}
-                    className={`h-5 w-5 rounded-md border flex items-center justify-center transition-colors ${
-                      isCompleted
-                        ? 'bg-green-500 border-green-500 text-white'
-                        : 'border-gray-300 dark:border-zinc-600 hover:border-gray-400'
-                    }`}
-                  >
-                    {isCompleted && <CheckIcon className="h-3 w-3 stroke-[3]" />}
-                  </button>
-                  <div className="min-w-0">
-                    <h3 className={`text-sm font-medium truncate text-black dark:text-white ${isCompleted ? 'line-through text-gray-400 dark:text-zinc-500' : ''}`}>
-                      {/* 💡 統一使用後端資料庫的欄位名 task_name */}
+                {/* 左側內容（核取方塊 + 標題） */}
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
+                  {!isTrash ? (
+                    <button
+                      onClick={() => handleUpdateStatus(task, isDone ? 'pending' : 'completed')}
+                      className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
+                    >
+                      {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
+                      {task.status === 'cancelled' && <span className="text-[9px] text-zinc-500">✕</span>}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleUpdateStatus(task, 'pending')}
+                      className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
+                      title="Restore Task"
+                    >
+                      <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className={`text-sm truncate ${
+                      task.status === 'completed' ? 'line-through text-zinc-600' : 
+                      task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-200'
+                    }`}>
                       {task.task_name || 'Untitled Task'}
-                    </h3>
-                    {task.deadline && (
-                      <p className="text-xs text-gray-400 mt-0.5">Due: {task.deadline}</p>
+                    </span>
+                    
+                    {task.deadline && !isDone && (
+                      <span className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                        📅 {formatToLocalDateStr(task.deadline)}
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-3">
-                  {task.priority && task.priority !== 'none' && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full uppercase font-semibold ${
-                      task.priority === 'high'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                        : task.priority === 'medium'
-                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                    }`}>
-                      {task.priority}
-                    </span>
+                {/* 右側懸浮微操作按鈕區 */}
+                <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 ml-4 flex-shrink-0 transition-opacity duration-100">
+                  {!isTrash ? (
+                    <>
+                      {task.status !== 'completed' && task.status !== 'cancelled' && (
+                        <button
+                          onClick={() => handleUpdateStatus(task, 'cancelled')}
+                          className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-800 transition-colors"
+                          title="Won't Do"
+                        >
+                          <NoSymbolIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleUpdateStatus(task, 'deleted')}
+                        className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-800 transition-colors"
+                        title="Move to Trash"
+                      >
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    // 徹底從資料庫中抹除
+                    <button
+                      onClick={async () => {
+                        const targetId = task.id || task.taskId;
+                        if (confirm('Permanently delete this task?')) {
+                          try {
+                            await taskApi.deleteTask(targetId);
+                            dispatch({ type: 'DELETE_TASK', payload: targetId });
+                            showSuccess('Permanently deleted');
+                          } catch (e) { 
+                            showError('Failed to delete'); 
+                          }
+                        }
+                      }}
+                      className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-800 transition-colors"
+                      title="Delete Permanently"
+                    >
+                      <TrashIcon className="w-3.5 h-3.5" />
+                    </button>
                   )}
-                  <button
-                    onClick={(e) => handleDeleteTask(e, task.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
                 </div>
+
               </div>
             );
           })
-        ) : (
-          <div className="p-8 text-center text-sm text-gray-400">
-            No tasks here yet.
-          </div>
         )}
       </div>
     </div>

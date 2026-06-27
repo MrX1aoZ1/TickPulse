@@ -1,133 +1,84 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useTasks } from '@/context/TaskContext';
-import { useTheme } from '@/context/ThemeContext';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SunIcon, MoonIcon, CalendarDaysIcon, CheckCircleIcon, InboxIcon, PlayIcon, PauseIcon, ArrowPathIcon, ClockIcon, StopIcon } from '@heroicons/react/24/outline';
-import CategoryList from './CategoryList';
-import FilterSelector from   './FilterSelector';
-import { useToast } from '@/context/ToastContext'; // Import useToast
-
-const predefinedFilters = [
-  { name: 'All Tasks', filter: 'all', icon: InboxIcon },
-  { name: 'Today\'s Tasks', filter: 'today', icon: CalendarDaysIcon },
-  { name: 'Completed Tasks', filter: 'completed', icon: CheckCircleIcon },
-];
-
+import { useAuth } from '@/context/AuthContext';
+import { 
+  CheckSquareIcon, 
+  CalendarIconCustom, 
+  ArrowLeftEndOnRectangleIconCustom 
+} from './ui/CustomIcons';
 
 export default function NavigationBar() {
-  const { theme, toggleTheme } = useTheme();
-  const { dispatch, selectedView, activeFilter } = useTasks();
   const router = useRouter();
-  const { showInfo } = useToast(); // Get showInfo from useToast
+  const { logout } = useAuth();
+  
+  // 🎯 預設鎖定在 'task' 一欄
+  const [activeTab, setActiveTab] = useState('task');
 
-  // Function to handle filter selection
-  const handleFilterSelect = (filter) => {
-    dispatch({ type: 'SET_VIEW', payload: 'filter' });
-    dispatch({ type: 'SET_FILTER', payload: filter });
-    router.push('/');
-  };
-
-  // 🎯 修正：將登出邏輯完美包裝進 async 的 handleLogout 函式中，點擊按鈕時才會觸發
   const handleLogout = async () => {
     try {
-      const response = await fetch('http://localhost:3000/auth/logout', {
+      await fetch('http://localhost:3000/auth/logout', {
         method: 'POST',
         credentials: 'include', 
       });
-
-      if (!response.ok) {
-        console.warn('後端登出 Session 銷毀失敗，將強制進行前端清理');
-      }
     } catch (error) {
-      console.error('登出請求發送失敗:', error);
+      console.error('Logout error:', error);
     } finally {
-      // 🔒 遵照吩咐：完全保留 localStorage 內的所有原有內容完好無損，絕不主動 removeItem 清空它們
+      logout(); // 清理 context 狀態
       router.push('/login');
     }
   };
 
-  // Handle calendar view
-  const handleCalendarView = () => {
-    router.push('/calendar');
-  };
-
   return (
-    <div className="flex flex-col h-full bg-gray-100 dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-700">
-      {/* App Logo/Name */}
-      <div className="p-4 border-b border-gray-200 dark:border-zinc-700">
-        <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">TickPulse</h1>
+    <div className="w-14 h-full bg-[#181818] flex flex-col items-center justify-between py-4 border-r border-zinc-900 select-none">
+      
+      {/* 頂部：用戶頭像區 (對齊圖一) */}
+      <div className="relative group cursor-pointer">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-md transition-transform active:scale-95">
+          TP
+        </div>
+        {/* 皇冠小點裝飾 */}
+        <span className="absolute -top-1 -right-1 text-[10px]">👑</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-1">
-        {/* Filters Section */}
-        <div className="mb-4">
-          <h2 className="px-2 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Filters
-          </h2>
-          {predefinedFilters.map((filter) => (
-            <button
-              key={filter.filter}
-              onClick={() => handleFilterSelect(filter.filter)}
-              className={`w-full flex items-center px-3 py-2 text-sm rounded-md ${
-                selectedView === 'filter' && activeFilter === filter.filter
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-800'
-              }`}
-            >
-              <filter.icon className="h-5 w-5 mr-2" />
-              {filter.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Categories Section */}
-        <div className="mb-4">
-          <h2 className="px-2 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Categories
-          </h2>
-          <CategoryList />
-        </div>
-      </nav>
-
-      {/* Bottom Actions */}
-      <div className="p-2 border-t border-gray-200 dark:border-zinc-700">
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="w-full flex items-center px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-800 mb-2"
-        >
-          {theme === 'dark' ? (
-            <>
-              <SunIcon className="h-5 w-5 mr-2" />
-              Light Mode
-            </>
-          ) : (
-            <>
-              <MoonIcon className="h-5 w-5 mr-2" />
-              Dark Mode
-            </>
-          )}
-        </button>
+      {/* 中部：核心分流切換區 (目前鎖定 Task 啟用) */}
+      <div className="flex flex-col space-y-4 flex-1 justify-center w-full items-center">
         
-        {/* Calendar View */}
+        {/* Task 按鈕 (目前打勾作用中) */}
         <button
-          onClick={handleCalendarView}
-          className="w-full flex items-center px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-800 mb-2"
+          onClick={() => setActiveTab('task')}
+          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+            activeTab === 'task'
+              ? 'bg-white text-zinc-900 shadow-sm'
+              : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300'
+          }`}
+          title="Tasks"
         >
-          <CalendarDaysIcon className="h-5 w-5 mr-2" />
-          Calendar
+          <CheckSquareIcon className="w-5 h-5" fill={activeTab === 'task'} />
         </button>
-        
-        {/* Logout Button */}
+
+        {/* Calendar 按鈕 (無功能，點擊不切換，僅供視覺) */}
+        <button
+          className="w-10 h-10 flex items-center justify-center rounded-xl text-zinc-600 cursor-not-allowed"
+          title="Calendar (Coming Soon)"
+          disabled
+        >
+          <CalendarIconCustom className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* 底部：登出操作區 */}
+      <div className="w-full flex justify-center">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center px-3 py-2 text-sm rounded-md bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900/50"
+          className="w-10 h-10 flex items-center justify-center rounded-xl text-zinc-500 hover:bg-red-950/30 hover:text-red-400 transition-colors"
+          title="Sign Out"
         >
-          Logout
+          <ArrowLeftEndOnRectangleIconCustom className="w-5 h-5" />
         </button>
       </div>
+
     </div>
   );
 }

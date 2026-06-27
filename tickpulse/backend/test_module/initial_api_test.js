@@ -92,7 +92,7 @@ async function runTests() {
         // ==========================================
         console.log('Test 4: Fetch All Category');
         
-        const res4 = await fetch(`${API_BASE}/api/tasks/category`, {
+        const res4 = await fetch(`${API_BASE}/api/categories`, {
             method: 'GET',
             headers: { 
                 'Content-Type': 'application/json',

@@ -13,9 +13,9 @@ async function getUserByEmail(email) {
          */
         const [users] = await connection.query(
             `SELECT u.*, ua.credential AS password 
-       FROM Users u
-       JOIN UserAuth ua ON u.id = ua.user_id
-       WHERE u.email = ? AND ua.provider = 'local'`,
+            FROM Users u
+            JOIN UserAuth ua ON u.id = ua.user_id
+            WHERE u.email = ? AND ua.provider = 'local'`,
             [email]
         );
         return users[0] || null;

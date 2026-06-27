@@ -1,7 +1,7 @@
 // ./backend/routes/taskRoutes.js
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware');
-const { getTasks, getTaskById, getTasksByCategory, getAllCategory, createCategory, createTask, updateTask, deleteTask, updateTaskOrder } = require('../controllers/taskController');
+const { getTasks, getTaskById, createTask, updateTask, deleteTask, updateTaskOrder } = require('../controllers/taskController');
 
 const router = express.Router();
     
@@ -10,15 +10,10 @@ const router = express.Router();
 router.get('/', protect, getTasks); 
 router.post('/', protect, createTask); 
 
-router.post('/category', protect, createCategory); 
-router.get('/category', protect, getAllCategory); 
-
-router.get('/category/:category_name', protect, getTasksByCategory); 
-
-router.get('/:id', protect, getTaskById); 
-router.put('/:id', protect, updateTask); 
-router.delete('/:id', protect, deleteTask); 
-router.put('/:id/reorder', protect, updateTaskOrder);
+router.get('/:taskId', protect, getTaskById); 
+router.put('/:taskId', protect, updateTask); 
+router.delete('/:taskId', protect, deleteTask); 
+router.put('/:taskId/reorder', protect, updateTaskOrder);
 
 
 module.exports = router;

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import React, { useCallback, useState, useEffect } from 'react';
 
 /**
@@ -10,6 +11,7 @@ import React, { useCallback, useState, useEffect } from 'react';
  * Renders the login form and handles user authentication.
  */
 export default function LoginPage() {
+  const { user, loading } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false); // State to manage loading status during login
 
@@ -19,13 +21,13 @@ export default function LoginPage() {
 
   const [formError, setFormError] = useState(undefined); // State for displaying form errors
 
-  // Effect to redirect to home page if user is already logged in (token exists)
-  // useEffect(() => {
-  //   const token = localStorage.getItem('accessToken');
-  //   if (token) {
-  //     router.push('/');
-  //   }
-  // }, [router]); // Dependency: router
+  useEffect(() => {
+    if (loading) return;
+
+    if (user) {
+      router.push('/webapp/');
+    }
+  }, [user, loading, router]);
 
   /**
    * Handles the form submission for login.
@@ -99,7 +101,7 @@ export default function LoginPage() {
         // On successful login, store access token and redirect
         // localStorage.setItem('accessToken', data.accessToken);
         // localStorage.setItem('refreshToken', data.refreshToken); // Potentially for refresh token functionality
-        router.push('/');
+        router.push('/webapp');
 
       } catch (error) {
         // Handle network or other unexpected errors

@@ -14,9 +14,6 @@ const createTaskTable = require('./models/Task');
 const createUserTable = require('./models/User');
 const createUserAuthTable = require('./models/UserAuth');
 
-// Initiallize the Routes
-const authRoutes = require('./routes/authRoutes');
-
 // Global env.
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -69,12 +66,14 @@ app.get('/api/data', (req, res) => {
     });
 });
 
-// Routes
+// Initiallize the Routes
 const taskRoutes = require("./routes/taskRoutes");
-// const timerRoutes = require("./routes/timerRoutes");
-// const licenseKeyRoutes = require("./routes/licenseKeyRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
+const authRoutes = require('./routes/authRoutes');
+
 app.use('/auth', authRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/categories", categoryRoutes);
 
 
 // Start Server
