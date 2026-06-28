@@ -75,7 +75,7 @@ export default function CategoryList() {
       const response = await taskApi.createCategory(trimmed);
       console.log(response);
       const newCat = {
-        id: response?.id,
+        id: response?.category_id,
         name: response?.name
       };
 
