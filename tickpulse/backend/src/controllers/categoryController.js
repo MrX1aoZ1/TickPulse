@@ -32,7 +32,7 @@ const getAllCategory = async (req, res) => {
 
         const connection = await connectDB();   
         const [categories] = await connection.query(
-            'SELECT * FROM categories WHERE user_id = ? ORDER BY sort_order ASC',
+            'SELECT * FROM categories WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC',
             [req.user.id]
         );
         
@@ -62,9 +62,19 @@ const createCategory = async (req, res) => {
 
     try {
         const connection = await connectDB();
+
+        const [maxOrderResult] = await connection.query(
+            'SELECT MAX(sort_order) as max_order FROM categories WHERE user_id = ?',
+            [userId]
+        );
+        const currentMax = maxOrderResult[0].max_order;
+        const nextOrder = currentMax !== null ? currentMax + 100 : 100;
+
+        console.log(nextOrder);
+
         await connection.query(
             'INSERT INTO categories (id, user_id, category_name, color, sort_order) VALUES (?, ?, ?, ?, ?)',
-            [categoryId, userId, name, color || '#FFFFFF', 0.0]
+            [categoryId, userId, name, color || '#FFFFFF', nextOrder]
         );
         
 
@@ -73,7 +83,7 @@ const createCategory = async (req, res) => {
             user_id: userId, 
             name: name, 
             color: color || '#FFFFFF', 
-            sort_order: 0.0
+            sort_order: nextOrder
         });
 
         await connection.end();
@@ -133,7 +143,9 @@ const updateCategory = async (req, res) => {
 const updateCategoryOrder = async (req, res) => {
     const categoryId = req.params.categoryId;
     const userId = req.user.id;
-    const { sort_order } = req.body; // 接收新的 double 權重值
+    const sort_order = req.body.order; // 接收新的 double 權重值
+
+    console.log(sort_order);
 
     if (sort_order === undefined) {
         return res.status(400).json({ message: 'Missing sort_order field' });

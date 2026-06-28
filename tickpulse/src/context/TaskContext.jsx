@@ -415,6 +415,23 @@ const taskReducer = (state, action) => {
       };
     }
 
+    case 'REORDER_CATEGORIES': {
+      const updatedCategories = state.categories.map(category =>
+        category.id === action.payload.categoryId
+          ? { ...category, sort_order: action.payload.newOrder }
+          : category
+      );
+      
+      // 🚀 核心優化：如果兩個分類的 sort_order 真的因為切分太多次而相等，
+      // 前端也維持原有的陣列相對順序（或有 created_at 時以它兜底），主要以新算出來的排序從小到大排
+      updatedCategories.sort((a, b) => a.sort_order - b.sort_order);
+
+      return {
+        ...state,
+        categories: updatedCategories
+      };
+    }
+
     case 'SELECT_TASK': {
       return {
         ...state,

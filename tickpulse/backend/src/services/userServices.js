@@ -117,8 +117,8 @@ async function createUserAccount(email, username, provider, providerId, password
           */
         const defaultInboxId = `inbox_${insertedUserId}`;
         await connection.query(
-            'INSERT INTO Categories (id, user_id, category_name) VALUES (?, ?, ?)',
-            [defaultInboxId, insertedUserId, 'Inbox']
+            'INSERT INTO Categories (id, user_id, category_name, sort_order) VALUES (?, ?, ?, ?)',
+            [defaultInboxId, insertedUserId, 'Inbox', 0.0]
         );
 
         await connection.commit();
