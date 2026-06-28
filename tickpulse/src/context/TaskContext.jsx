@@ -41,28 +41,28 @@ const TaskContext = createContext();
 export function TaskProvider({ children }) {
   const [state, dispatch] = useReducer(taskReducer, initialState);
   const { showError } = useToast(); // Hook for displaying error notifications
-  
+
   // Effect to load state from localStorage on component mount
   useEffect(() => {
     const savedState = loadState();
     if (savedState) {
       dispatch({ type: 'HYDRATE_STATE', payload: savedState });
     }
-    
+
     const fetchInitialData = async () => {
       try {
         const tasks = await taskApi.getTasks();
         if (Array.isArray(tasks)) {
           dispatch({ type: 'SET_TASKS', payload: tasks });
         }
-        
+
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
           const transformedCategories = categories.map(cat => ({
-            id: cat.id, 
-            name: cat.category_name 
+            id: cat.id,
+            name: cat.category_name
           }));
-          
+
           dispatch({
             type: 'SET_CATEGORIES',
             payload: transformedCategories
@@ -70,7 +70,7 @@ export function TaskProvider({ children }) {
 
           const userInbox = transformedCategories.find(c => c.id && c.id.toString().startsWith('inbox_'));
           if (userInbox) {
-             dispatch({ type: 'SELECT_CATEGORY', payload: userInbox.id });
+            dispatch({ type: 'SELECT_CATEGORY', payload: userInbox.id });
           }
         }
       } catch (error) {
@@ -78,16 +78,16 @@ export function TaskProvider({ children }) {
         showError('Failed to load tasks and categories');
       }
     };
-    
+
     // 🚨 關鍵修正：移除了 token 檢查，直接呼叫！
-    fetchInitialData(); 
+    fetchInitialData();
   }, [showError]);
 
   // Effect to save state to localStorage whenever the state changes
   useEffect(() => {
     saveState(state); // Persist current state to localStorage
   }, [state]); // Dependency: state
-  
+
   /**
    * Function to refresh the list of tasks from the backend.
    * Useful after operations that might change tasks on the server outside of direct client actions.
@@ -95,16 +95,16 @@ export function TaskProvider({ children }) {
   const refreshTasks = async () => {
     try {
       // 🚨 關鍵修正：刪除了對 localStorage token 的依賴
-      const tasks = await taskApi.getTasks(); 
+      const tasks = await taskApi.getTasks();
       if (Array.isArray(tasks)) {
-        dispatch({ type: 'SET_TASKS', payload: tasks }); 
+        dispatch({ type: 'SET_TASKS', payload: tasks });
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error);
-      showError('Failed to refresh tasks'); 
+      showError('Failed to refresh tasks');
     }
   };
-  
+
   return (
     // Provide task state, dispatch function, and refreshTasks function to consuming components
     <TaskContext.Provider value={{ ...state, dispatch, refreshTasks }}>
@@ -138,7 +138,7 @@ async function fetchWithAuth(endpoint, options = {}) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      credentials: 'include', 
+      credentials: 'include',
     });
 
     console.log(response);
@@ -146,11 +146,11 @@ async function fetchWithAuth(endpoint, options = {}) {
     if (response.status === 401 || response.status === 403) {
       throw new Error('UNAUTHORIZED');
     }
-    
+
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}: ${await response.text()}`);
     }
-    
+
     return response.json();
   } catch (error) {
     console.error('API request failed:', error);
@@ -163,27 +163,27 @@ async function fetchWithAuth(endpoint, options = {}) {
  * @description An object containing functions for interacting with the task-related backend API endpoints.
  */
 export const taskApi = {
-  getTasks: async () => 
+  getTasks: async () =>
     fetchWithAuth('/api/tasks', {
       method: 'GET',
-      credentials: 'include', 
+      credentials: 'include',
     }),
   createTask: async (taskData) =>
     fetchWithAuth('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', 
+      credentials: 'include',
       body: JSON.stringify(taskData),
     }),
   updateTask: async (taskId, updates) =>
     fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', 
+      credentials: 'include',
       body: JSON.stringify(updates),
     }),
   deleteTask: async (taskId) =>
-    fetchWithAuth(`/api/tasks/${taskId}`, { 
+    fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       credentials: 'include',
     }),
@@ -221,13 +221,13 @@ export const taskApi = {
 
 
   // Category related API calls
-  getAllCategories: async () => 
+  getAllCategories: async () =>
     fetchWithAuth('/api/categories', {
       method: 'GET',
       credentials: 'include',
     }),
   createCategory: async (category_name) =>
-    fetchWithAuth('/api/categories', { 
+    fetchWithAuth('/api/categories', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -235,14 +235,26 @@ export const taskApi = {
       credentials: 'include',
       body: JSON.stringify({ name: category_name }),
     }),
-  updateCategory: async (category_id) =>
+  updateCategory: async (category_id, category_name, category_color) =>
     fetchWithAuth(`/api/categories/${category_id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ category_id: category_id }),
+      body: JSON.stringify({
+        name: category_name,
+        color: category_color
+      }),
+    }),
+  updateCategoryOrder: async (category_id, category_order) =>
+    fetchWithAuth(`/api/categories/${category_id}/order`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ order: category_order }),
     }),
   deleteCategory: async (category_id) =>
     fetchWithAuth(`/api/categories/${category_id}`, {
@@ -254,8 +266,8 @@ export const taskApi = {
 // Initial state for the reducer
 const initialState = {
   tasks: [],
-  categories: [], 
-  selectedCategoryId: null, 
+  categories: [],
+  selectedCategoryId: null,
   selectedTaskId: null,
   selectedView: 'filter', // Changed from 'category' to 'filter'
   activeFilter: 'all', // Set default filter to 'all'
@@ -268,7 +280,7 @@ const saveState = (state) => {
   try {
     if (typeof window !== 'undefined') {
       const stateToSave = {
-        selectedCategoryId: state.selectedCategoryId, 
+        selectedCategoryId: state.selectedCategoryId,
         selectedView: state.selectedView,
         activeFilter: state.activeFilter,
       };
@@ -314,7 +326,7 @@ const taskReducer = (state, action) => {
           tasks: [...state.tasks, action.payload]
         };
       }
-      
+
       const newId = uuidv4();
       const newTask = {
         id: newId,
@@ -336,11 +348,11 @@ const taskReducer = (state, action) => {
     case 'TOGGLE_TASK': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.payload
-          ? { 
-              ...task, 
-              completed: !task.completed,
-              status: !task.completed ? 'completed' : 'pending' // Update status to match database
-            }
+          ? {
+            ...task,
+            completed: !task.completed,
+            status: !task.completed ? 'completed' : 'pending' // Update status to match database
+          }
           : task
       );
       return {

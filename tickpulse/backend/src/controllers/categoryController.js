@@ -53,10 +53,8 @@ const getAllCategory = async (req, res) => {
 // @access  Private
 const createCategory = async (req, res) => {
     const { name, color } = req.body; 
-    const user_id = req.user.id;
-    const category_id = crypto.randomUUID();
-
-    console.log(user_id);
+    const userId = req.user.id;
+    const categoryId = crypto.randomUUID();
 
     if (!name) {
         return res.status(400).json({ message: 'Missing required fields: id' });
@@ -66,13 +64,13 @@ const createCategory = async (req, res) => {
         const connection = await connectDB();
         await connection.query(
             'INSERT INTO categories (id, user_id, category_name, color, sort_order) VALUES (?, ?, ?, ?, ?)',
-            [category_id, user_id, name, color || '#FFFFFF', 0.0]
+            [categoryId, userId, name, color || '#FFFFFF', 0.0]
         );
         
 
         res.status(201).json({ 
-            category_id: category_id, 
-            user_id: user_id, 
+            category_id: categoryId, 
+            user_id: userId, 
             name: name, 
             color: color || '#FFFFFF', 
             sort_order: 0.0
@@ -83,6 +81,84 @@ const createCategory = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
+// @desc    Update a category (name and color)
+// @route   PUT /api/categories/:categoryId
+// @access  Private
+const updateCategory = async (req, res) => {
+    const categoryId = req.params.categoryId;
+    const userId = req.user.id;
+    console.log(req.body);
+    const { name, color } = req.body; 
+
+    try {
+        const connection = await connectDB();
+        
+        // 1. 先確認該分類存在且屬於該使用者
+        const [existing] = await connection.query(
+            'SELECT * FROM categories WHERE id = ? AND user_id = ?',
+            [categoryId, userId]
+        );
+
+        if (existing.length === 0) {
+            await connection.end();
+            return res.status(404).json({ message: 'Category not found or unauthorized' });
+        }
+
+        // 2. 動態組合更新欄位（傳什麼才改什麼，沒傳就維持原樣）
+        const updatedName = name !== undefined ? name : existing[0].category_name;
+        const updatedColor = color !== undefined ? color : existing[0].color;
+
+        await connection.query(
+            'UPDATE categories SET category_name = ?, color = ? WHERE id = ? AND user_id = ?',
+            [updatedName, updatedColor, categoryId, userId]
+        );
+
+        res.status(200).json({ 
+            message: 'Category updated successfully',
+            category_id: categoryId,
+            name: updatedName,
+            color: updatedColor
+        });
+        
+        await connection.end();
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Update category sort order (Drag and Drop)
+// @route   PUT /api/categories/:categoryId/order
+// @access  Private
+const updateCategoryOrder = async (req, res) => {
+    const categoryId = req.params.categoryId;
+    const userId = req.user.id;
+    const { sort_order } = req.body; // 接收新的 double 權重值
+
+    if (sort_order === undefined) {
+        return res.status(400).json({ message: 'Missing sort_order field' });
+    }
+
+    try {
+        const connection = await connectDB();
+        
+        const [result] = await connection.query(
+            'UPDATE categories SET sort_order = ? WHERE id = ? AND user_id = ?',
+            [sort_order, categoryId, userId]
+        );
+
+        if (result.affectedRows === 0) {
+            await connection.end();
+            return res.status(404).json({ message: 'Category not found or unauthorized' });
+        }
+
+        res.status(200).json({ message: 'Order updated successfully', sort_order });
+        await connection.end();
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 
 // @desc    Delete a category safely and move its tasks to Inbox
 // @route   DELETE /api/categories/:id
@@ -138,5 +214,7 @@ module.exports = {
     getTasksByCategory,
     createCategory,
     getAllCategory,
+    updateCategory,
+    updateCategoryOrder,
     deleteCategory
 }
