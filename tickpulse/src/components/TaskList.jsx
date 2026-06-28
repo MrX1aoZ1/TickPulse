@@ -7,12 +7,14 @@ import {
   PlusIcon,
   TrashIcon, 
   NoSymbolIcon, 
-  ArrowUturnLeftIcon 
+  ArrowUturnLeftIcon,
+  PencilIcon // 🎯 記得引入鉛筆圖標
 } from '@heroicons/react/24/outline';
 
 export default function TaskList() {
   const { 
     tasks = [], 
+    categories = [], // 🎯 修正一：把 categories 從全域 Context 中解構撈出來！
     dispatch, 
     selectedView, 
     selectedCategoryId, 
@@ -23,6 +25,10 @@ export default function TaskList() {
   // 快速新增任務的本地狀態
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 🎯 修正二：補上你畫面中缺失的這兩個頂端標題編輯狀態！
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [editHeaderName, setEditHeaderName] = useState('');
 
   // 🎯 輔助函式：將任何後端回傳的日期轉成純粹的 "YYYY-MM-DD" 本地字串（處理 Floating Time）
   const formatToLocalDateStr = (dateInput) => {
@@ -38,9 +44,55 @@ export default function TaskList() {
     return `${year}-${month}-${day}`;
   };
 
+  // 🎯 1. 動態計算目前 View 的頂端標題資訊
+  const currentCategory = categories.find(cat => cat.id === selectedCategoryId);
+  
+  let headerTitle = '';
+  let isEditable = false;
+
+  if (selectedView === 'category' && currentCategory) {
+    headerTitle = currentCategory.name || 'Untitled List';
+    // 系統預設的收件匣（inbox_）不允許改名，其餘自訂清單可以
+    isEditable = !currentCategory.id?.toString().startsWith('inbox_');
+  } else if (selectedView === 'filter') {
+    switch (activeFilter) {
+      case 'all': headerTitle = 'All Tasks'; break;
+      case 'today': headerTitle = "Today's Tasks"; break;
+      case 'next7': headerTitle = 'Next 7 Days'; break;
+      case 'completed': headerTitle = 'Completed'; break;
+      case 'cancelled': headerTitle = "Won't Do"; break;
+      case 'deleted': headerTitle = 'Trash'; break;
+      default: headerTitle = 'Tasks';
+    }
+  }
+
+  // 🎯 2. 處理頂端標題的重命名儲存
+  const handleSaveHeaderRename = async () => {
+    const trimmed = editHeaderName.trim();
+    if (!trimmed || trimmed === currentCategory?.name) {
+      setIsEditingHeader(false);
+      return;
+    }
+    try {
+      // 呼叫後端 API
+      await taskApi.updateCategory(selectedCategoryId, trimmed); 
+      
+      // 同步更新前端 Context 狀態
+      dispatch({ 
+        type: 'RENAME_CATEGORY', 
+        payload: { categoryId: selectedCategoryId, newName: trimmed } 
+      });
+      showSuccess('List renamed');
+    } catch (error) {
+      showError('Failed to rename list');
+    } finally {
+      setIsEditingHeader(false);
+    }
+  };
+
+  // 任務過濾邏輯
   const filteredTasks = tasks.filter(task => {
     const taskDateStr = formatToLocalDateStr(task.deadline);
-
 
     if (selectedView === 'category') {
       return (
@@ -51,8 +103,6 @@ export default function TaskList() {
     }
 
     if (selectedView === 'filter') {
-      const todayStr = formatToLocalDateStr(new Date());
-      
       switch (activeFilter) {
         case 'all':
           return (
@@ -60,43 +110,31 @@ export default function TaskList() {
             task.status !== 'cancelled' && 
             task.status !== 'completed'
           );
-          
         case 'today':
-          // Today 視圖：今天的任務，且必須是活著的任務
           return (
-            taskDateStr === todayStr && 
+            taskDateStr === formatToLocalDateStr(new Date()) && 
             task.status !== 'deleted' && 
             task.status !== 'cancelled'
           );
-          
         case 'next7': {
           if (!taskDateStr || task.status === 'deleted' || task.status === 'cancelled') return false;
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const sevenDaysLater = new Date();
           sevenDaysLater.setDate(today.getDate() + 7);
-          sevenDaysLater.setHours(23, 59, 59, 999);
           const taskDate = new Date(taskDateStr + 'T00:00:00');
           return taskDate >= today && taskDate <= sevenDaysLater;
         }
-        
-        case 'completed': 
-          return task.status === 'completed';
-          
-        case 'cancelled': 
-          return task.status === 'cancelled';
-          
-        case 'deleted': 
-          return task.status === 'deleted';
-          
-        default: 
-          return true;
+        case 'completed': return task.status === 'completed';
+        case 'cancelled': return task.status === 'cancelled';
+        case 'deleted': return task.status === 'deleted';
+        default: return true;
       }
     }
     return true;
   });
 
-  // 🎯 處理快速新增任務
+  // 快速新增任務
   const handleAddTask = async (e) => {
     e.preventDefault();
     const title = newTaskTitle.trim();
@@ -131,15 +169,12 @@ export default function TaskList() {
     }
   };
 
-  // 🎯 處理狀態更新
   const handleUpdateStatus = async (task, newStatus) => {
-    // 🛡️ 確保能拿到正確的 ID 欄位
     const targetId = task.id || task.taskId;
     if (!targetId) {
       showError('Task ID missing');
       return;
     }
-
     try {
       await taskApi.updateTask(targetId, { status: newStatus });
       dispatch({ 
@@ -164,6 +199,38 @@ export default function TaskList() {
   return (
     <div className="flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200">
       
+      {/* 🎯 動態標題顯示 / 編輯區塊 */}
+      <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-900/40">
+        {isEditingHeader ? (
+          <input
+            type="text"
+            value={editHeaderName}
+            onChange={(e) => setEditHeaderName(e.target.value)}
+            onBlur={handleSaveHeaderRename}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveHeaderRename()}
+            className="text-xl font-semibold bg-zinc-900 text-white border border-zinc-700 rounded px-2 py-0.5 focus:outline-none focus:border-blue-500"
+            autoFocus
+          />
+        ) : (
+          <div 
+            className={`flex items-center space-x-2 group ${isEditable ? 'cursor-pointer' : ''}`}
+            onClick={() => {
+              if (isEditable) {
+                setIsEditingHeader(true);
+                setEditHeaderName(headerTitle);
+              }
+            }}
+          >
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+              {headerTitle}
+            </h1>
+            {isEditable && (
+              <PencilIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 📥 頂部極簡新增輸入框 */}
       {selectedView !== 'filter' || (activeFilter !== 'completed' && activeFilter !== 'cancelled' && activeFilter !== 'deleted') ? (
         <form onSubmit={handleAddTask} className="px-6 pt-4 pb-2">
@@ -189,7 +256,6 @@ export default function TaskList() {
             <p className="text-xs text-zinc-700 mt-1">Enjoy your clear day!</p>
           </div>
         ) : (
-          
           filteredTasks.map((task) => {
             const isDone = task.status === 'completed';
             const isTrash = task.status === 'cancelled' || task.status === 'deleted';
@@ -199,7 +265,6 @@ export default function TaskList() {
                 key={task.id || task.taskId}
                 className="group flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-zinc-900/40 border border-transparent hover:border-zinc-900/60 transition-all duration-150"
               >
-                {/* 左側內容（核取方塊 + 標題） */}
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   {!isTrash ? (
                     <button
@@ -207,7 +272,6 @@ export default function TaskList() {
                       className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
                     >
                       {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
-                      {task.status === 'cancelled' && <span className="text-[9px] text-zinc-500">✕</span>}
                     </button>
                   ) : (
                     <button
@@ -226,7 +290,6 @@ export default function TaskList() {
                     }`}>
                       {task.task_name || 'Untitled Task'}
                     </span>
-                    
                     {task.deadline && !isDone && (
                       <span className="text-[10px] text-zinc-500 font-mono mt-0.5">
                         📅 {formatToLocalDateStr(task.deadline)}
@@ -235,7 +298,6 @@ export default function TaskList() {
                   </div>
                 </div>
 
-                {/* 右側懸浮微操作按鈕區 */}
                 <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 ml-4 flex-shrink-0 transition-opacity duration-100">
                   {!isTrash ? (
                     <>
@@ -257,7 +319,6 @@ export default function TaskList() {
                       </button>
                     </>
                   ) : (
-                    // 徹底從資料庫中抹除
                     <button
                       onClick={async () => {
                         const targetId = task.id || task.taskId;
@@ -278,7 +339,6 @@ export default function TaskList() {
                     </button>
                   )}
                 </div>
-
               </div>
             );
           })
