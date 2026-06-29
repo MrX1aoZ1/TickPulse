@@ -3,25 +3,26 @@
 import { useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
-import { 
+import {
   PlusIcon,
-  TrashIcon, 
-  NoSymbolIcon, 
+  TrashIcon,
+  NoSymbolIcon,
   ArrowUturnLeftIcon,
   PencilIcon // 🎯 記得引入鉛筆圖標
 } from '@heroicons/react/24/outline';
 
 export default function TaskList() {
-  const { 
-    tasks = [], 
+  const {
+    tasks = [],
     categories = [], // 🎯 修正一：把 categories 從全域 Context 中解構撈出來！
-    dispatch, 
-    selectedView, 
-    selectedCategoryId, 
-    activeFilter 
+    dispatch,
+    selectedView,
+    selectedCategoryId,
+    activeFilter,
+    selectedTaskId
   } = useTasks();
   const { showSuccess, showError } = useToast();
-  
+
   // 快速新增任務的本地狀態
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,10 +35,10 @@ export default function TaskList() {
   const formatToLocalDateStr = (dateInput) => {
     if (!dateInput) return null;
     if (typeof dateInput === 'string' && dateInput.length === 10) return dateInput;
-    
+
     const d = new Date(dateInput);
     if (isNaN(d.getTime())) return null;
-    
+
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -46,7 +47,7 @@ export default function TaskList() {
 
   // 🎯 1. 動態計算目前 View 的頂端標題資訊
   const currentCategory = categories.find(cat => cat.id === selectedCategoryId);
-  
+
   let headerTitle = '';
   let isEditable = false;
 
@@ -75,12 +76,12 @@ export default function TaskList() {
     }
     try {
       // 呼叫後端 API
-      await taskApi.updateCategory(selectedCategoryId, trimmed); 
-      
+      await taskApi.updateCategory(selectedCategoryId, trimmed);
+
       // 同步更新前端 Context 狀態
-      dispatch({ 
-        type: 'RENAME_CATEGORY', 
-        payload: { categoryId: selectedCategoryId, newName: trimmed } 
+      dispatch({
+        type: 'RENAME_CATEGORY',
+        payload: { categoryId: selectedCategoryId, newName: trimmed }
       });
       showSuccess('List renamed');
     } catch (error) {
@@ -96,8 +97,8 @@ export default function TaskList() {
 
     if (selectedView === 'category') {
       return (
-        task.category_id === selectedCategoryId && 
-        task.status !== 'deleted' && 
+        task.category_id === selectedCategoryId &&
+        task.status !== 'deleted' &&
         task.status !== 'cancelled'
       );
     }
@@ -106,14 +107,14 @@ export default function TaskList() {
       switch (activeFilter) {
         case 'all':
           return (
-            task.status !== 'deleted' && 
-            task.status !== 'cancelled' && 
+            task.status !== 'deleted' &&
+            task.status !== 'cancelled' &&
             task.status !== 'completed'
           );
         case 'today':
           return (
-            taskDateStr === formatToLocalDateStr(new Date()) && 
-            task.status !== 'deleted' && 
+            taskDateStr === formatToLocalDateStr(new Date()) &&
+            task.status !== 'deleted' &&
             task.status !== 'cancelled'
           );
         case 'next7': {
@@ -150,14 +151,14 @@ export default function TaskList() {
       };
 
       const savedTask = await taskApi.createTask(taskData);
-      
+
       const sanitizedTask = {
         ...savedTask,
         status: savedTask.status || 'pending',
         priority: savedTask.priority || 'none',
         deadline: savedTask.deadline || null
       };
-      
+
       dispatch({ type: 'ADD_TASK', payload: sanitizedTask });
       setNewTaskTitle('');
       showSuccess('Task added!');
@@ -177,9 +178,9 @@ export default function TaskList() {
     }
     try {
       await taskApi.updateTask(targetId, { status: newStatus });
-      dispatch({ 
-        type: 'UPDATE_TASK', 
-        payload: { id: targetId, updates: { status: newStatus } } 
+      dispatch({
+        type: 'UPDATE_TASK',
+        payload: { id: targetId, updates: { status: newStatus } }
       });
       showSuccess(`Task updated`);
     } catch (error) {
@@ -197,8 +198,8 @@ export default function TaskList() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200">
-      
+    <div className="flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200 min-w-0">
+
       {/* 🎯 動態標題顯示 / 編輯區塊 */}
       <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-900/40">
         {isEditingHeader ? (
@@ -212,7 +213,7 @@ export default function TaskList() {
             autoFocus
           />
         ) : (
-          <div 
+          <div
             className={`flex items-center space-x-2 group ${isEditable ? 'cursor-pointer' : ''}`}
             onClick={() => {
               if (isEditable) {
@@ -260,22 +261,40 @@ export default function TaskList() {
             const isDone = task.status === 'completed';
             const isTrash = task.status === 'cancelled' || task.status === 'deleted';
 
+            const isSelected = selectedTaskId && String(task.id || task.taskId) === String(selectedTaskId);
+
             return (
               <div
                 key={task.id || task.taskId}
-                className="group flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-zinc-900/40 border border-transparent hover:border-zinc-900/60 transition-all duration-150"
+                // 🎯 修正二：綁定點擊事件，派發 SELECT_TASK 給全域 Context
+                onClick={() => {
+                  const targetId = task.id || task.taskId;
+                  dispatch({ type: 'SELECT_TASK', payload: targetId });
+                }}
+                // 🎯 修正三：如果被選中，加上深色背景高亮（bg-zinc-900 border-zinc-800）提升工業級 UI 質感
+                className={`group flex items-center justify-between py-2.5 px-3 rounded-lg border border-transparent cursor-pointer transition-all duration-150 ${isSelected
+                    ? 'bg-zinc-900 border-zinc-800/80 text-white'
+                    : 'hover:bg-zinc-900/40 hover:border-zinc-900/60'
+                  }`}
               >
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   {!isTrash ? (
                     <button
-                      onClick={() => handleUpdateStatus(task, isDone ? 'pending' : 'completed')}
+                      onClick={(e) => {
+                        // 🎯 修正四：阻止事件冒泡，防止點擊 Checkbox 同時觸發外層的選擇任務事件
+                        e.stopPropagation();
+                        handleUpdateStatus(task, isDone ? 'pending' : 'completed');
+                      }}
                       className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
                     >
                       {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleUpdateStatus(task, 'pending')}
+                      onClick={(e) => {
+                        e.stopPropagation(); // 阻止冒泡
+                        handleUpdateStatus(task, 'pending');
+                      }}
                       className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
                       title="Restore Task"
                     >
@@ -284,10 +303,9 @@ export default function TaskList() {
                   )}
 
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className={`text-sm truncate ${
-                      task.status === 'completed' ? 'line-through text-zinc-600' : 
-                      task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-200'
-                    }`}>
+                    <span className={`text-sm truncate ${task.status === 'completed' ? 'line-through text-zinc-600' :
+                        task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-200'
+                      }`}>
                       {task.task_name || 'Untitled Task'}
                     </span>
                     {task.deadline && !isDone && (
@@ -303,7 +321,10 @@ export default function TaskList() {
                     <>
                       {task.status !== 'completed' && task.status !== 'cancelled' && (
                         <button
-                          onClick={() => handleUpdateStatus(task, 'cancelled')}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 🎯 阻止冒泡
+                            handleUpdateStatus(task, 'cancelled');
+                          }}
                           className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-800 transition-colors"
                           title="Won't Do"
                         >
@@ -311,7 +332,10 @@ export default function TaskList() {
                         </button>
                       )}
                       <button
-                        onClick={() => handleUpdateStatus(task, 'deleted')}
+                        onClick={(e) => {
+                          e.stopPropagation(); // 🎯 阻止冒泡
+                          handleUpdateStatus(task, 'deleted');
+                        }}
                         className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-800 transition-colors"
                         title="Move to Trash"
                       >
@@ -320,15 +344,16 @@ export default function TaskList() {
                     </>
                   ) : (
                     <button
-                      onClick={async () => {
+                      onClick={async (e) => {
+                        e.stopPropagation(); // 🎯 阻止冒泡
                         const targetId = task.id || task.taskId;
                         if (confirm('Permanently delete this task?')) {
                           try {
                             await taskApi.deleteTask(targetId);
                             dispatch({ type: 'DELETE_TASK', payload: targetId });
                             showSuccess('Permanently deleted');
-                          } catch (e) { 
-                            showError('Failed to delete'); 
+                          } catch (e) {
+                            showError('Failed to delete');
                           }
                         }
                       }}

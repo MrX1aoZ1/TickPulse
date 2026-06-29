@@ -79,6 +79,7 @@ export function AuthProvider({ children }) {
       console.error('Logout request failed:', error);
     } finally {
       setUser(null);
+      localStorage.removeItem('tickpulseState');
       router.push('/login');
     }
   };

@@ -370,16 +370,32 @@ const taskReducer = (state, action) => {
     }
 
     case 'UPDATE_TASK': {
-      const updatedTasks = state.tasks.map(task =>
-        task.id === action.payload.id
-          ? { ...task, ...action.payload.updates }
-          : task
-      );
-      return {
-        ...state,
-        tasks: updatedTasks
-      };
-    }
+  const { id, status, task_name, content, deadline, priority, category_id, updates } = action.payload;
+  
+  // 智慧相容層：同時支援「攤平結構」與「updates 物件結構」的傳入方式
+  const incomingUpdates = updates || {
+    status,
+    task_name,
+    content,
+    deadline,
+    priority,
+    category_id
+  };
+
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => {
+      if (String(task.id || task.taskId) === String(id)) {
+        
+        return {
+          ...task,
+          ...incomingUpdates 
+        };
+      }
+      return task; // 不是目標任務，保持原樣
+    })
+  };
+}
 
     case 'SET_CATEGORIES': {
       return {
