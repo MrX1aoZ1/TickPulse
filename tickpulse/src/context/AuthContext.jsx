@@ -48,21 +48,20 @@ export function AuthProvider({ children }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
-        credentials: 'include', // 讓後端發放的 Set-Cookie 順利存入瀏覽器
+        credentials: 'include',
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => undefined);
 
       if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+        return { success: false, status: response.status, message: data?.message };
       }
 
       setUser(data.user || { authenticated: true });
-      return true;
+      return { success: true, status: response.status, message: 'Login successful' };
     } catch (error) {
       console.error('Login error:', error);
-      showError(error.message || 'Login failed');
-      return false;
+      return { success: false, status: response.status, message: 'Server error, please try again later' };
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import NavigationBar from '@/components/NavigationBar';
 import CategoryList from '@/components/CategoryList'; // 🎯 引入融合後的二級選單
+import { TaskProvider } from '@/context/TaskContext';
+import { AuthProvider } from '@/context/AuthContext';
+
 
 export default function WebAppLayout({ children }) {
   const { user, loading } = useAuth();
@@ -36,6 +39,8 @@ export default function WebAppLayout({ children }) {
 
   // 🎉 3. 完美還原 TickTick 經典「三欄式」佈局
   return (
+    <TaskProvider>
+
     <div className="flex h-screen w-screen overflow-hidden bg-[#1a1a1a] text-zinc-200">
       
       {/* 📌 第一欄：最左側「純圖標窄欄」 */}
@@ -54,5 +59,7 @@ export default function WebAppLayout({ children }) {
       </main>
 
     </div>
+
+    </TaskProvider>
   );
 }

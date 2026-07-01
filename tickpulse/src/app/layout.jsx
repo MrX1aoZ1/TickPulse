@@ -1,10 +1,9 @@
 import { Geist, Geist_Mono } from "next/font/google"; // Import Geist fonts
 import "@/styles/globals.css"; // Import global styles
-import { AuthProvider } from '@/context/AuthContext';
+
 import { ToastProvider } from '@/context/ToastContext';
 import { ThemeProvider } from '@/context/ThemeContext';
-import { TaskProvider } from '@/context/TaskContext';
-
+import { AuthProvider } from '@/context/AuthContext';
 // Initialize Geist Sans font with variable and subsets
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,13 +35,13 @@ export default function RootLayout({ children }) {
       <body>
         {/* 🎯 關鍵：所有的 Providers 必須塞在最外層，這樣全站所有頁面與子 Layout 才能調用 useAuth */}
         <ToastProvider>
-          <AuthProvider>
-            <TaskProvider>
+
+            <AuthProvider>
               <ThemeProvider>
                 {children}
               </ThemeProvider>
-            </TaskProvider>
-          </AuthProvider>
+            
+    </AuthProvider>
         </ToastProvider>
       </body>
     </html>

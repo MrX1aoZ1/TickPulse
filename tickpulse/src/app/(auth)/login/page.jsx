@@ -11,7 +11,7 @@ import React, { useCallback, useState, useEffect } from 'react';
  * Renders the login form and handles user authentication.
  */
 export default function LoginPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false); // State to manage loading status during login
 
@@ -55,53 +55,26 @@ export default function LoginPage() {
 
       try {
         // Send login request to the backend
-        const response = await fetch(
-          'http://localhost:3000/auth/login',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-            credentials: 'include'
-          }
-        );
-
-        // const response = useState({
-        //   status: 200,
-        //   data: { message: "Success" }
-        // });
-
-        const data = await response.json().catch(() => undefined); // Parse JSON response
+        const result = await login(email, password);
 
         // Handle specific error statuses
-        if (response.status === 401) {
+        if (result.status === 401) {
           setIsLoading(false);
           setFormError("User not registered, please register first");
           return;
         }
-        if (response.status === 402) {
+        if (result.status === 402) {
           setIsLoading(false);
           setFormError("Password is incorrect, please try again");
           return;
         }
 
         // Handle server errors (5xx)
-        if (500 <= response.status && response.status < 600) {
+        if (result.status >= 500 && result.status < 600) {
           setIsLoading(false);
           setFormError("Server error, please try again later");
           return; // Added return
         }
-
-        // Handle other non-ok responses
-        if (!response.ok) {
-          setIsLoading(false);
-          setFormError(data?.message || "Unknown error, please try again later"); // Use message from data if available
-          return;
-        }
-
-        // On successful login, store access token and redirect
-        // localStorage.setItem('accessToken', data.accessToken);
-        // localStorage.setItem('refreshToken', data.refreshToken); // Potentially for refresh token functionality
-        router.push('/webapp');
 
       } catch (error) {
         // Handle network or other unexpected errors
