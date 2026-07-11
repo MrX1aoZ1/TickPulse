@@ -1,5 +1,6 @@
 'use client';
 
+import { LexoRank } from 'lexorank';
 import { useState, useEffect } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
@@ -34,26 +35,35 @@ export default function CategoryList() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-  const fetchCategories = async () => {
-    setIsLoading(true);
-    try {
-      const fetched = await taskApi.getAllCategories();
-      if (Array.isArray(fetched)) {
-        const transformed = fetched.map(cat => ({
-          id: cat.id || cat.category_id,
-          name: cat.category_name || cat.name || 'Unnamed Category',
-          sort_order: cat.sort_order !== undefined && cat.sort_order !== null ? Number(cat.sort_order) : 0
-        }));
-        dispatch({ type: 'SET_CATEGORIES', payload: transformed });
+    const fetchCategories = async () => {
+      setIsLoading(true);
+      try {
+        const fetched = await taskApi.getAllCategories();
+        if (Array.isArray(fetched)) {
+          const transformed = fetched.map(cat => ({
+            id: cat.id || cat.category_id,
+            name: cat.category_name || cat.name,
+            // 🎯 修正：絕對不要給 'a'，要給官方庫的預設標準起點
+            sort_order: cat.sort_order ? String(cat.sort_order) : '0|0i0000:'
+          }));
+
+          // 使用原生字串比對函數 localeCompare 排序
+          transformed.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
+
+          dispatch({ type: 'SET_CATEGORIES', payload: transformed });
+        }
+      } catch (error) {
+        console.error('Failed to load categories:', error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    } finally {
-      setIsLoading(false);
+    };
+    
+    // 如果全域已經有資料了，可以減少一次重複發送 API
+    if (categories.length === 0) {
+      fetchCategories();
     }
-  };
-  fetchCategories();
-}, [dispatch]);
+  }, [dispatch, categories.length]);
 
   const handleSelectFilter = (filterId) => {
     dispatch({ type: 'SET_VIEW', payload: 'filter' });
@@ -69,20 +79,46 @@ export default function CategoryList() {
     e.preventDefault();
     const trimmed = newCategoryName.trim();
     if (!trimmed) return;
+
+    // 🎯 1. 根據目前最後一個分類，預先算好一個安全的官方 LexoRank 字串
+    const lastCategory = categories[categories.length - 1];
+    let nextMaxOrder = '0|0i0000:'; // 預設初始值
+    
+    if (lastCategory && lastCategory.sort_order) {
+      try {
+        nextMaxOrder = LexoRank.parse(String(lastCategory.sort_order)).genNext().toString();
+      } catch {
+        nextMaxOrder = LexoRank.middle().toString();
+      }
+    } else {
+      nextMaxOrder = LexoRank.middle().toString();
+    }
+
     try {
+      // 🎯 2. 調用 API（如果你的後端 createCategory 只吃一個字串參數，請確保後端會自己給 sort_order）
+      // 如果你的後端可以吃 sort_order，建議改成：taskApi.createCategory(trimmed, nextMaxOrder)
       const response = await taskApi.createCategory(trimmed);
-      // 前端樂觀同步：直接使用後端幫我們算好的 MAX + 100 權重
+      
+      console.log("🎁 後端創建分類成功，回傳的原始資料為:", response);
+
+      // 🎯 3. 嚴格檢查並對齊後端回傳的結構，絕對不要使用未定義的變數 a，且保持字串型態
       const newCat = {
-        id: response?.category_id,
-        name: response?.name || trimmed,
-        sort_order: Number(response?.sort_order) || 0
+        // 同時相容後端回傳 id 或 category_id 欄位
+        id: response?.id || response?.category_id || `temp_${Date.now()}`,
+        name: response?.category_name || response?.name || trimmed,
+        // 優先使用後端回傳的排序，如果後端沒回傳，則使用剛剛前端算好的新尾端權重
+        sort_order: response?.sort_order ? String(response.sort_order) : nextMaxOrder
       };
 
+      // 4. 發送給 Reducer，這時內建的 localeCompare 就會自動把它排到最後面
       dispatch({ type: 'ADD_CATEGORY', payload: newCat });
+      
+      // 5. 清空輸入框與關閉狀態
       setNewCategoryName('');
       setIsAdding(false);
       showSuccess('List created successfully');
     } catch (error) {
+      console.error('前端解析後端新增資料時發生錯誤:', error);
       showError('Failed to create list');
     }
   };
@@ -117,51 +153,85 @@ export default function CategoryList() {
 
   // 🎯 核心拖曳釋放處理函數
   const onDragEnd = async (result) => {
-    const { destination, source, draggableId } = result;
+  const { destination, source, draggableId } = result;
 
-    if (!destination || destination.index === source.index) return;
+  if (!destination || destination.index === source.index) return;
 
-    const reorderedCategories = Array.from(categories);
-    const [removed] = reorderedCategories.splice(source.index, 1);
-    reorderedCategories.splice(destination.index, 0, removed);
+  const reorderedCategories = Array.from(categories);
+  const [removed] = reorderedCategories.splice(source.index, 1);
+  reorderedCategories.splice(destination.index, 0, removed);
 
-    let newOrder = 0.0;
-    const idx = destination.index;
-    console.log(newOrder);
+  const idx = destination.index;
+  const prevCategory = reorderedCategories[idx - 1];
+  const nextCategory = reorderedCategories[idx + 1];
 
-    if (reorderedCategories.length === 1) {
-      newOrder = 100;
-    } else if (idx === 0) {
-      // 拖曳到最頂端：比原本第一名再減 100
-      newOrder = reorderedCategories[1].sort_order - 100;
-    } else if (idx === reorderedCategories.length - 1) {
-      // 拖曳到最底端：比原本最後一名再加 100
-      newOrder = reorderedCategories[idx - 1].sort_order + 100;
-    } else {
-      // 夾在中間：取前一項與後一項 sort_order 的平均浮點數
-      const prevOrder = reorderedCategories[idx - 1].sort_order;
-      const nextOrder = reorderedCategories[idx + 1].sort_order;
-      newOrder = (prevOrder + nextOrder) / 2;
+  // 🛡️ 核心安全防線：安全的 LexoRank 解析器
+  const safeParseLexo = (orderStr) => {
+    if (!orderStr || typeof orderStr !== 'string') {
+      return LexoRank.middle();
     }
-
-    // 1. 立即派發 Action 更新前端 UI (樂觀更新，流暢度滿分)
-    dispatch({
-      type: 'REORDER_CATEGORIES',
-      payload: { categoryId: draggableId, newOrder: newOrder }
-    });
-
-    // 2. 非同步通知後端資料庫寫入新 Order
     try {
-      await taskApi.updateCategoryOrder(draggableId, newOrder);
-    } catch (error) {
-      console.error('Failed to update category order:', error);
-      showError('Failed to save list order');
+      // 檢查是否符合官方的格式（通常包含 '|' 且以 ':' 結尾）
+      if (!orderStr.includes('|')) {
+        // 如果是舊的純字母資料（如 'a', 'b', 'amm'），利用 middle() 防災
+        return LexoRank.middle();
+      }
+      return LexoRank.parse(orderStr);
+    } catch (e) {
+      console.warn(`[LexoRank] 發現不相容的排序字串 "${orderStr}"，已自動重設。`);
+      return LexoRank.middle();
     }
   };
 
+  let newOrderStr = '';
+
+  try {
+    if (!prevCategory && !nextCategory) {
+      newOrderStr = LexoRank.middle().toString();
+    } else if (!prevCategory) {
+      const nextRank = safeParseLexo(nextCategory.sort_order);
+      newOrderStr = nextRank.genPrev().toString();
+    } else if (!nextCategory) {
+      const prevRank = safeParseLexo(prevCategory.sort_order);
+      newOrderStr = prevRank.genNext().toString();
+    } else {
+      const prevRank = safeParseLexo(prevCategory.sort_order);
+      const nextRank = safeParseLexo(nextCategory.sort_order);
+      
+      // 處理萬一前後鄰居順序錯亂的極端情況
+      if (prevRank.compareTo(nextRank) >= 0) {
+        newOrderStr = nextRank.genNext().toString();
+      } else {
+        newOrderStr = prevRank.between(nextRank).toString();
+      }
+    }
+  } catch (error) {
+    console.error('LexoRank 終極兜底失敗:', error);
+    newOrderStr = LexoRank.middle().toString();
+  }
+
+  console.log(`🚀 LexoRank 官方庫安全計算：[${removed.name}] -> ${newOrderStr}`);
+
+  removed.sort_order = newOrderStr;
+
+  dispatch({
+    type: 'SET_CATEGORIES',
+    payload: reorderedCategories
+  });
+
+  try {
+    // 這裡你的 API URL 是 /api/categories/[id]/order，請確保這裡的呼叫正確
+    await taskApi.updateCategoryOrder(draggableId, newOrderStr);
+  } catch (error) {
+    console.error('Failed to update order in backend:', error);
+    showError('Failed to save order');
+    dispatch({ type: 'SET_CATEGORIES', payload: categories });
+  }
+};
+
   return (
     <div className="w-64 h-full bg-[#1e1e1e] text-zinc-300 flex flex-col py-4 border-r border-zinc-800/40 select-none">
-      
+
       {/* 智能過濾器 */}
       <div className="space-y-0.5 px-2 mb-6">
         {smartFilters.map((filter) => {
@@ -171,8 +241,8 @@ export default function CategoryList() {
               key={filter.id}
               onClick={() => handleSelectFilter(filter.id)}
               className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
-                  ? 'bg-zinc-800 text-white font-medium'
-                  : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
+                ? 'bg-zinc-800 text-white font-medium'
+                : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
                 }`}
             >
               <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />
@@ -209,18 +279,18 @@ export default function CategoryList() {
           <DragDropContext onDragEnd={onDragEnd}>
             <Droppable droppableId="categories-droppable" type="CATEGORY">
               {(provided) => (
-                <div 
+                <div
                   className="space-y-0.5"
                   {...provided.droppableProps}
                   ref={provided.innerRef}
                 >
                   {categories.map((category, index) => {
                     const isSelected = selectedView === 'category' && selectedCategoryId === category.id;
-                    
+
                     return (
-                      <Draggable 
-                        key={category.id} 
-                        draggableId={category.id.toString()} 
+                      <Draggable
+                        key={category.id}
+                        draggableId={category.id.toString()}
                         index={index}
                       >
                         {(dragProvided, snapshot) => (
@@ -229,9 +299,8 @@ export default function CategoryList() {
                             {...dragProvided.draggableProps}
                             {...dragProvided.dragHandleProps}
                             onClick={() => handleSelectCategory(category.id)}
-                            className={`group flex items-center justify-between px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
-                              isSelected ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
-                            } ${snapshot.isDragging ? 'bg-zinc-800/80 shadow-lg border border-zinc-700/40' : ''}`}
+                            className={`group flex items-center justify-between px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${isSelected ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
+                              } ${snapshot.isDragging ? 'bg-zinc-800/80 shadow-lg border border-zinc-700/40' : ''}`}
                             style={{ ...dragProvided.draggableProps.style }}
                           >
                             <div className="flex items-center min-w-0 flex-1">
@@ -294,8 +363,8 @@ export default function CategoryList() {
                   key={filter.id}
                   onClick={() => handleSelectFilter(filter.id)}
                   className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
-                      ? 'bg-zinc-800 text-white font-medium'
-                      : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
+                    ? 'bg-zinc-800 text-white font-medium'
+                    : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
                     }`}
                 >
                   <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />

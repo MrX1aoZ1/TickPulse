@@ -25,7 +25,7 @@ const createCategoryTable = async () => {
                 
                 category_name VARCHAR(255),
                 color VARCHAR(7) DEFAULT '#FFFFFF',
-                sort_order DOUBLE DEFAULT 0.0,
+                sort_order VARCHAR(255) DEFAULT 'a',
 
                 FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

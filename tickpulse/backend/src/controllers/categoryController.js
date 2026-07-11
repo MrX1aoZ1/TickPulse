@@ -68,6 +68,9 @@ const createCategory = async (req, res) => {
             [userId]
         );
         const currentMax = maxOrderResult[0].max_order;
+
+        console.log(currentMax);
+
         const nextOrder = currentMax !== null ? currentMax + 100 : 100;
 
         console.log(nextOrder);

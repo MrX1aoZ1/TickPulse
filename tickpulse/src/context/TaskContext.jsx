@@ -58,10 +58,15 @@ export function TaskProvider({ children }) {
 
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
+          // 🎯 修正：必須完整保留 sort_order，並強轉字串，防止 null/undefined
           const transformedCategories = categories.map(cat => ({
-            id: cat.id,
-            name: cat.category_name
+            id: cat.id || cat.category_id,
+            name: cat.category_name || cat.name,
+            sort_order: cat.sort_order ? String(cat.sort_order) : '0|0i0000:'
           }));
+
+          // 🎯 核心修復：在送入全域狀態前，強制進行 LexoRank 字串排序
+          transformedCategories.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
 
           dispatch({
             type: 'SET_CATEGORIES',
@@ -79,7 +84,6 @@ export function TaskProvider({ children }) {
       }
     };
 
-    // 🚨 關鍵修正：移除了 token 檢查，直接呼叫！
     fetchInitialData();
   }, [showError]);
 
@@ -400,14 +404,21 @@ const taskReducer = (state, action) => {
     case 'SET_CATEGORIES': {
       return {
         ...state,
-        categories: action.payload
+        // 🛡️ 終極防線：進到全域狀態前，一律依據字串字典序排好隊
+        categories: [...action.payload].sort((a, b) => 
+          String(a.sort_order).localeCompare(String(b.sort_order))
+        )
       };
     }
 
     case 'ADD_CATEGORY': {
+      const updatedCategories = [...state.categories, action.payload];
       return {
         ...state,
-        categories: [...state.categories, action.payload]
+        // 🛡️ 新增分類後也立刻排序，防止畫面的 index 錯位
+        categories: updatedCategories.sort((a, b) => 
+          String(a.sort_order).localeCompare(String(b.sort_order))
+        )
       };
     }
 
