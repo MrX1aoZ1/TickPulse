@@ -251,14 +251,17 @@ export const taskApi = {
         color: category_color
       }),
     }),
-  updateCategoryOrder: async (category_id, category_order) =>
+  updateCategoryOrder: async (category_id, { prev_id = null, next_id = null } = {}) =>
     fetchWithAuth(`/api/categories/${category_id}/order`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ order: category_order }),
+      body: JSON.stringify({
+        prev_id,
+        next_id,
+      }),
     }),
   deleteCategory: async (category_id) =>
     fetchWithAuth(`/api/categories/${category_id}`, {
@@ -451,7 +454,9 @@ const taskReducer = (state, action) => {
       
       // 🚀 核心優化：如果兩個分類的 sort_order 真的因為切分太多次而相等，
       // 前端也維持原有的陣列相對順序（或有 created_at 時以它兜底），主要以新算出來的排序從小到大排
-      updatedCategories.sort((a, b) => a.sort_order - b.sort_order);
+      updatedCategories.sort((a, b) =>
+        String(a.sort_order).localeCompare(String(b.sort_order))
+      );
 
       return {
         ...state,

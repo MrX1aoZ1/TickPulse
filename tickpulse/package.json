@@ -31,7 +31,6 @@
     "express-session": "^1.18.1",
     "firebase": "^11.4.0",
     "jsonwebtoken": "^9.0.2",
-    "lexorank": "^1.0.5",
     "lodash.debounce": "^4.0.8",
     "method-override": "^3.0.0",
     "mysql2": "^3.14.1",

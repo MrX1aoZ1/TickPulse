@@ -1,6 +1,5 @@
 'use client';
 
-import { LexoRank } from 'lexorank';
 import { useState, useEffect } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
@@ -80,34 +79,13 @@ export default function CategoryList() {
     const trimmed = newCategoryName.trim();
     if (!trimmed) return;
 
-    // 🎯 1. 根據目前最後一個分類，預先算好一個安全的官方 LexoRank 字串
-    const lastCategory = categories[categories.length - 1];
-    let nextMaxOrder = '0|0i0000:'; // 預設初始值
-    
-    if (lastCategory && lastCategory.sort_order) {
-      try {
-        nextMaxOrder = LexoRank.parse(String(lastCategory.sort_order)).genNext().toString();
-      } catch {
-        nextMaxOrder = LexoRank.middle().toString();
-      }
-    } else {
-      nextMaxOrder = LexoRank.middle().toString();
-    }
-
     try {
-      // 🎯 2. 調用 API（如果你的後端 createCategory 只吃一個字串參數，請確保後端會自己給 sort_order）
-      // 如果你的後端可以吃 sort_order，建議改成：taskApi.createCategory(trimmed, nextMaxOrder)
       const response = await taskApi.createCategory(trimmed);
-      
-      console.log("🎁 後端創建分類成功，回傳的原始資料為:", response);
 
-      // 🎯 3. 嚴格檢查並對齊後端回傳的結構，絕對不要使用未定義的變數 a，且保持字串型態
       const newCat = {
-        // 同時相容後端回傳 id 或 category_id 欄位
         id: response?.id || response?.category_id || `temp_${Date.now()}`,
         name: response?.category_name || response?.name || trimmed,
-        // 優先使用後端回傳的排序，如果後端沒回傳，則使用剛剛前端算好的新尾端權重
-        sort_order: response?.sort_order ? String(response.sort_order) : nextMaxOrder
+        sort_order: response?.sort_order ? String(response.sort_order) : '0|0i0000:',
       };
 
       // 4. 發送給 Reducer，這時內建的 localeCompare 就會自動把它排到最後面
@@ -151,83 +129,45 @@ export default function CategoryList() {
     }
   };
 
-  // 🎯 核心拖曳釋放處理函數
+  // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
   const onDragEnd = async (result) => {
-  const { destination, source, draggableId } = result;
+    const { destination, source, draggableId } = result;
 
-  if (!destination || destination.index === source.index) return;
+    if (!destination || destination.index === source.index) return;
 
-  const reorderedCategories = Array.from(categories);
-  const [removed] = reorderedCategories.splice(source.index, 1);
-  reorderedCategories.splice(destination.index, 0, removed);
+    const previous = categories;
+    const reorderedCategories = Array.from(categories);
+    const [removed] = reorderedCategories.splice(source.index, 1);
+    reorderedCategories.splice(destination.index, 0, removed);
 
-  const idx = destination.index;
-  const prevCategory = reorderedCategories[idx - 1];
-  const nextCategory = reorderedCategories[idx + 1];
+    const idx = destination.index;
+    const prevCategory = reorderedCategories[idx - 1] || null;
+    const nextCategory = reorderedCategories[idx + 1] || null;
 
-  // 🛡️ 核心安全防線：安全的 LexoRank 解析器
-  const safeParseLexo = (orderStr) => {
-    if (!orderStr || typeof orderStr !== 'string') {
-      return LexoRank.middle();
-    }
+    dispatch({
+      type: 'SET_CATEGORIES',
+      payload: reorderedCategories,
+    });
+
     try {
-      // 檢查是否符合官方的格式（通常包含 '|' 且以 ':' 結尾）
-      if (!orderStr.includes('|')) {
-        // 如果是舊的純字母資料（如 'a', 'b', 'amm'），利用 middle() 防災
-        return LexoRank.middle();
+      const response = await taskApi.updateCategoryOrder(draggableId, {
+        prev_id: prevCategory?.id ?? null,
+        next_id: nextCategory?.id ?? null,
+      });
+      if (response?.sort_order) {
+        const withServerRank = reorderedCategories.map((cat) =>
+          cat.id === draggableId || cat.id?.toString() === draggableId
+            ? { ...cat, sort_order: String(response.sort_order) }
+            : cat
+        );
+        dispatch({ type: 'SET_CATEGORIES', payload: withServerRank });
       }
-      return LexoRank.parse(orderStr);
-    } catch (e) {
-      console.warn(`[LexoRank] 發現不相容的排序字串 "${orderStr}"，已自動重設。`);
-      return LexoRank.middle();
+    } catch (error) {
+      console.error('Failed to update order in backend:', error);
+      showError('Failed to save order');
+      dispatch({ type: 'SET_CATEGORIES', payload: previous });
     }
   };
-
-  let newOrderStr = '';
-
-  try {
-    if (!prevCategory && !nextCategory) {
-      newOrderStr = LexoRank.middle().toString();
-    } else if (!prevCategory) {
-      const nextRank = safeParseLexo(nextCategory.sort_order);
-      newOrderStr = nextRank.genPrev().toString();
-    } else if (!nextCategory) {
-      const prevRank = safeParseLexo(prevCategory.sort_order);
-      newOrderStr = prevRank.genNext().toString();
-    } else {
-      const prevRank = safeParseLexo(prevCategory.sort_order);
-      const nextRank = safeParseLexo(nextCategory.sort_order);
-      
-      // 處理萬一前後鄰居順序錯亂的極端情況
-      if (prevRank.compareTo(nextRank) >= 0) {
-        newOrderStr = nextRank.genNext().toString();
-      } else {
-        newOrderStr = prevRank.between(nextRank).toString();
-      }
-    }
-  } catch (error) {
-    console.error('LexoRank 終極兜底失敗:', error);
-    newOrderStr = LexoRank.middle().toString();
-  }
-
-  console.log(`🚀 LexoRank 官方庫安全計算：[${removed.name}] -> ${newOrderStr}`);
-
-  removed.sort_order = newOrderStr;
-
-  dispatch({
-    type: 'SET_CATEGORIES',
-    payload: reorderedCategories
-  });
-
-  try {
-    // 這裡你的 API URL 是 /api/categories/[id]/order，請確保這裡的呼叫正確
-    await taskApi.updateCategoryOrder(draggableId, newOrderStr);
-  } catch (error) {
-    console.error('Failed to update order in backend:', error);
-    showError('Failed to save order');
-    dispatch({ type: 'SET_CATEGORIES', payload: categories });
-  }
-};
 
   return (
     <div className="w-64 h-full bg-[#1e1e1e] text-zinc-300 flex flex-col py-4 border-r border-zinc-800/40 select-none">
