@@ -15,7 +15,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false); // State to manage loading status during login
 
-  const [email, setEmail] = useState('test_1782030972787@tickpulse.com'); // State for email input: user_id = 19
+  const [email, setEmail] = useState('test@tickpulse.com'); // State for email input: user_id = 19
   const [password, setPassword] = useState('Password.123!'); // State for password input
   const [showPassword, setShowPassword] = useState(false); // State to toggle password visibility
 
