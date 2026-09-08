@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// Task.sort_order 在 schema 是 DOUBLE，拖曳排序用前後權重取中點（fractional indexing）。
+// Task.sort_order 與分類一樣存 LexoRank 字串。
 type Task struct {
 	ID             string     `db:"id" json:"id"`
 	UserID         int        `db:"user_id" json:"user_id"`
@@ -19,7 +19,7 @@ type Task struct {
 	ReminderTime   *time.Time `db:"reminder_time" json:"reminder_time"`
 	IsRecurring    bool       `db:"is_recurring" json:"is_recurring"`
 	RecurrenceRule *string    `db:"recurrence_rule" json:"recurrence_rule"`
-	SortOrder      float64    `db:"sort_order" json:"sort_order"`
+	SortOrder      string     `db:"sort_order" json:"sort_order"`
 	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at" json:"updated_at"`
 }

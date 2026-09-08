@@ -22,7 +22,7 @@ var allowedTaskColumns = map[string]bool{
 	"content": true, "status": true, "priority": true, "deadline": true,
 	"start_time": true, "end_time": true, "is_all_day": true,
 	"reminder_type": true, "reminder_time": true, "is_recurring": true,
-	"recurrence_rule": true, "sort_order": true,
+	"recurrence_rule": true,
 }
 
 type TaskHandler struct {
@@ -44,8 +44,8 @@ type createTaskRequest struct {
 }
 
 type reorderTaskRequest struct {
-	PrevOrder *float64 `json:"prev_order"`
-	NextOrder *float64 `json:"next_order"`
+	PrevID *string `json:"prev_id"`
+	NextID *string `json:"next_id"`
 }
 
 func (h *TaskHandler) getTask(id string, userID int) (*models.Task, error) {
@@ -102,7 +102,6 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		Priority:     "none",
 		IsAllDay:     true,
 		ReminderType: 1,
-		SortOrder:    0,
 	}
 	if body.Priority != "" {
 		task.Priority = body.Priority
@@ -126,7 +125,14 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		task.RecurrenceRule = body.RecurrenceRule
 	}
 
-	_, err := h.DB.Exec(`
+	nextRank, err := h.nextRankInCategory(user.ID, task.CategoryID)
+	if err != nil {
+		c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})
+		return
+	}
+	task.SortOrder = nextRank
+
+	_, err = h.DB.Exec(`
 		INSERT INTO tasks (
 			id, user_id, category_id, task_name, content, status, priority,
 			deadline, start_time, end_time, is_all_day, reminder_type, reminder_time,
@@ -206,19 +212,30 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 
 func (h *TaskHandler) UpdateTaskOrder(c *gin.Context) {
 	user := middleware.CurrentUser(c)
+	taskID := c.Param("taskId")
 	var body reorderTaskRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"message": "Reorder bounds omitted"})
+		c.JSON(400, gin.H{"message": "Invalid request body"})
 		return
 	}
 
-	newSortOrder, err := models.MidpointSortOrder(body.PrevOrder, body.NextOrder)
+	prevRank, err := h.neighborSortOrder(user.ID, derefTaskID(body.PrevID), taskID)
+	if err != nil {
+		c.JSON(400, gin.H{"message": err.Error()})
+		return
+	}
+	nextRank, err := h.neighborSortOrder(user.ID, derefTaskID(body.NextID), taskID)
 	if err != nil {
 		c.JSON(400, gin.H{"message": err.Error()})
 		return
 	}
 
-	taskID := c.Param("taskId")
+	newSortOrder, err := models.RankBetween(prevRank, nextRank)
+	if err != nil {
+		c.JSON(400, gin.H{"message": "Could not compute LexoRank"})
+		return
+	}
+
 	res, err := h.DB.Exec(
 		`UPDATE tasks SET sort_order = ? WHERE id = ? AND user_id = ?`,
 		newSortOrder, taskID, user.ID,
@@ -239,6 +256,53 @@ func (h *TaskHandler) UpdateTaskOrder(c *gin.Context) {
 		return
 	}
 	c.JSON(200, task)
+}
+
+func derefTaskID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return strings.TrimSpace(*id)
+}
+
+func (h *TaskHandler) neighborSortOrder(userID int, neighborID, movingID string) (string, error) {
+	if neighborID == "" {
+		return "", nil
+	}
+	if neighborID == movingID {
+		return "", fmt.Errorf("neighbor cannot be the moved task")
+	}
+	task, err := h.getTask(neighborID, userID)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("neighbor task not found")
+	}
+	if err != nil {
+		return "", err
+	}
+	return task.SortOrder, nil
+}
+
+func (h *TaskHandler) nextRankInCategory(userID int, categoryID *string) (string, error) {
+	var last string
+	var err error
+	if categoryID == nil || *categoryID == "" {
+		err = h.DB.Get(&last, `
+			SELECT sort_order FROM tasks
+			WHERE user_id = ? AND (category_id IS NULL OR category_id = '')
+			ORDER BY sort_order DESC LIMIT 1`, userID)
+	} else {
+		err = h.DB.Get(&last, `
+			SELECT sort_order FROM tasks
+			WHERE user_id = ? AND category_id = ?
+			ORDER BY sort_order DESC LIMIT 1`, userID, *categoryID)
+	}
+	if err == sql.ErrNoRows {
+		return models.NextCategoryRank(""), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return models.NextCategoryRank(last), nil
 }
 
 func (h *TaskHandler) DeleteTask(c *gin.Context) {

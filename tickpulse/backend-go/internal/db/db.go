@@ -3,11 +3,13 @@ package db
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
 	"tickpulse/backend-go/internal/config"
+	"tickpulse/backend-go/internal/models"
 )
 
 func Connect(cfg config.Config) *sqlx.DB {
@@ -113,7 +115,7 @@ func EnsureTables(database *sqlx.DB) error {
 			reminder_time TIMESTAMP NULL DEFAULT NULL,
 			is_recurring BOOLEAN DEFAULT FALSE,
 			recurrence_rule VARCHAR(255) DEFAULT NULL,
-			sort_order DOUBLE DEFAULT 0.0,
+			sort_order VARCHAR(255) DEFAULT '0|0i0000:',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
@@ -141,6 +143,61 @@ func EnsureTables(database *sqlx.DB) error {
 			return err
 		}
 	}
+	if err := migrateTaskSortOrder(database); err != nil {
+		return err
+	}
 	log.Println("All tables created or already exist")
+	return nil
+}
+
+func migrateTaskSortOrder(database *sqlx.DB) error {
+	var dataType string
+	err := database.Get(&dataType, `
+		SELECT DATA_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND COLUMN_NAME = 'sort_order'
+		  AND TABLE_NAME IN ('Tasks', 'tasks')
+		LIMIT 1`)
+	if err != nil || dataType == "" {
+		return nil
+	}
+	lower := strings.ToLower(dataType)
+	if strings.Contains(lower, "char") || strings.Contains(lower, "text") {
+		return nil
+	}
+
+	type row struct {
+		ID         string  `db:"id"`
+		UserID     int     `db:"user_id"`
+		CategoryID *string `db:"category_id"`
+	}
+	var rows []row
+	if err := database.Select(&rows, `
+		SELECT id, user_id, category_id FROM Tasks
+		ORDER BY user_id, category_id, sort_order ASC, created_at ASC`); err != nil {
+		return err
+	}
+
+	if _, err := database.Exec(`ALTER TABLE Tasks MODIFY COLUMN sort_order VARCHAR(255) DEFAULT '0|0i0000:'`); err != nil {
+		return err
+	}
+
+	lastKey, lastRank := "", ""
+	for _, r := range rows {
+		cat := ""
+		if r.CategoryID != nil {
+			cat = *r.CategoryID
+		}
+		key := fmt.Sprintf("%d|%s", r.UserID, cat)
+		if key != lastKey {
+			lastKey = key
+			lastRank = ""
+		}
+		lastRank = models.NextCategoryRank(lastRank)
+		if _, err := database.Exec(`UPDATE Tasks SET sort_order = ? WHERE id = ?`, lastRank, r.ID); err != nil {
+			return err
+		}
+	}
+	log.Println("Migrated Tasks.sort_order to LexoRank VARCHAR(255)")
 	return nil
 }

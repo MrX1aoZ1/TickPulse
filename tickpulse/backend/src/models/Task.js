@@ -34,7 +34,7 @@ const createTaskTable = async () => {
                     is_recurring BOOLEAN DEFAULT FALSE,
                     recurrence_rule VARCHAR(255) DEFAULT NULL,
 
-                    sort_order DOUBLE DEFAULT 0.0,
+                    sort_order VARCHAR(255) DEFAULT '0|0i0000:',
 
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

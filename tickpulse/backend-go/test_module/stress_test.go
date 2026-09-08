@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"tickpulse/backend-go/internal/models"
 )
 
 // Replaces seed.js + stress-test.js: seeds into a throwaway user, times the
@@ -32,6 +34,7 @@ func TestListTasksQueryTiming(t *testing.T) {
 	user := c.signUp(email)
 	inbox := inboxID(user.User.ID)
 
+	lastRank := ""
 	const batch = 500
 	for i := 0; i < n; i += batch {
 		size := batch
@@ -49,7 +52,8 @@ func TestListTasksQueryTiming(t *testing.T) {
 			if j%5 == 0 {
 				status = "completed"
 			}
-			args = append(args, uuid.NewString(), inbox, user.User.ID, fmt.Sprintf("stress #%d", i+j+1), status, float64(i+j))
+			lastRank = models.NextCategoryRank(lastRank)
+			args = append(args, uuid.NewString(), inbox, user.User.ID, fmt.Sprintf("stress #%d", i+j+1), status, lastRank)
 		}
 		if _, err := testDB.Exec(query, args...); err != nil {
 			t.Fatalf("seed insert: %v", err)

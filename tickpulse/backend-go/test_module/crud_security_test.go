@@ -2,6 +2,7 @@ package test_module
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -140,19 +141,29 @@ func TestTaskCRUDAndOwnership(t *testing.T) {
 	})
 
 	t.Run("reorder", func(t *testing.T) {
+		firstID := taskID
 		second := owner.createTask("Second Task", nil)
 		secondID, _ := second["id"].(string)
 		resp := owner.do(http.MethodPut, "/api/tasks/"+secondID+"/reorder", map[string]any{
-			"prev_order": 0.0,
-			"next_order": 2.0,
+			"prev_id": nil,
+			"next_id": firstID,
 		})
 		task := decodeJSON[map[string]any](t, resp)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status %d payload %v", resp.StatusCode, task)
 		}
-		order, ok := task["sort_order"].(float64)
-		if !ok || order != 1.0 {
-			t.Fatalf("sort_order=%v want 1.0", task["sort_order"])
+		rank, _ := task["sort_order"].(string)
+		if rank == "" || !strings.Contains(rank, "|") {
+			t.Fatalf("sort_order=%v want lexorank string", task["sort_order"])
+		}
+
+		list := owner.do(http.MethodGet, "/api/tasks", nil)
+		tasks := decodeJSON[[]map[string]any](t, list)
+		if list.StatusCode != http.StatusOK || len(tasks) < 2 {
+			t.Fatalf("list status %d len %d", list.StatusCode, len(tasks))
+		}
+		if tasks[0]["id"] != secondID {
+			t.Fatalf("expected %s first after reorder, got %v", secondID, tasks[0]["id"])
 		}
 	})
 
