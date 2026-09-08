@@ -167,6 +167,73 @@ func TestTaskCRUDAndOwnership(t *testing.T) {
 		}
 	})
 
+	t.Run("reorder_batch_keeps_relative_order", func(t *testing.T) {
+		a := owner.createTask("Batch A", nil)
+		b := owner.createTask("Batch B", nil)
+		c := owner.createTask("Batch C", nil)
+		aID, _ := a["id"].(string)
+		bID, _ := b["id"].(string)
+		cID, _ := c["id"].(string)
+		if aID == "" || bID == "" || cID == "" {
+			t.Fatalf("missing ids: %v %v %v", a, b, c)
+		}
+
+		resp := owner.do(http.MethodPut, "/api/tasks/reorder", map[string]any{
+			"ids":     []string{bID, cID},
+			"prev_id": nil,
+			"next_id": aID,
+		})
+		body := decodeJSON[map[string]any](t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d payload %v", resp.StatusCode, body)
+		}
+
+		list := owner.do(http.MethodGet, "/api/tasks", nil)
+		tasks := decodeJSON[[]map[string]any](t, list)
+		if list.StatusCode != http.StatusOK {
+			t.Fatalf("list status %d", list.StatusCode)
+		}
+		ids := make([]string, 0, 3)
+		for _, task := range tasks {
+			id, _ := task["id"].(string)
+			if id == aID || id == bID || id == cID {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) != 3 || ids[0] != bID || ids[1] != cID || ids[2] != aID {
+			t.Fatalf("expected B,C,A got %v", ids)
+		}
+	})
+
+	t.Run("reorder_batch_rejects_foreign_id", func(t *testing.T) {
+		mine := owner.createTask("Mine", nil)
+		mineID, _ := mine["id"].(string)
+		foreign := intruder.createTask("Foreign", nil)
+		foreignID, _ := foreign["id"].(string)
+		resp := owner.do(http.MethodPut, "/api/tasks/reorder", map[string]any{
+			"ids": []string{mineID, foreignID},
+		})
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("status %d, want 404", resp.StatusCode)
+		}
+	})
+
+	t.Run("reorder_batch_rejects_neighbor_in_moving_set", func(t *testing.T) {
+		a := owner.createTask("N A", nil)
+		b := owner.createTask("N B", nil)
+		aID, _ := a["id"].(string)
+		bID, _ := b["id"].(string)
+		resp := owner.do(http.MethodPut, "/api/tasks/reorder", map[string]any{
+			"ids":     []string{aID, bID},
+			"next_id": bID,
+		})
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status %d, want 400", resp.StatusCode)
+		}
+	})
+
 	t.Run("intruder_cannot_delete", func(t *testing.T) {
 		resp := intruder.do(http.MethodDelete, "/api/tasks/"+taskID, nil)
 		defer resp.Body.Close()

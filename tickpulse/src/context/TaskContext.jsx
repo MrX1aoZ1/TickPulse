@@ -211,6 +211,13 @@ export const taskApi = {
       credentials: 'include',
       body: JSON.stringify({ prev_id, next_id }),
     }),
+  updateTasksOrder: async ({ ids, prev_id = null, next_id = null }) =>
+    fetchWithAuth('/api/tasks/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ ids, prev_id, next_id }),
+    }),
 
   // updateTaskStatus: async (id, status) =>
   //   fetchWithAuth(`/api/tasks/${id}/status`, {

@@ -219,43 +219,113 @@ func (h *TaskHandler) UpdateTaskOrder(c *gin.Context) {
 		return
 	}
 
-	prevRank, err := h.neighborSortOrder(user.ID, derefTaskID(body.PrevID), taskID)
+	orders, err := h.applyReorder(user.ID, []string{taskID}, derefTaskID(body.PrevID), derefTaskID(body.NextID))
 	if err != nil {
-		c.JSON(400, gin.H{"message": err.Error()})
+		writeReorderError(c, err)
 		return
 	}
-	nextRank, err := h.neighborSortOrder(user.ID, derefTaskID(body.NextID), taskID)
-	if err != nil {
-		c.JSON(400, gin.H{"message": err.Error()})
-		return
-	}
-
-	newSortOrder, err := models.RankBetween(prevRank, nextRank)
-	if err != nil {
-		c.JSON(400, gin.H{"message": "Could not compute LexoRank"})
-		return
-	}
-
-	res, err := h.DB.Exec(
-		`UPDATE tasks SET sort_order = ? WHERE id = ? AND user_id = ?`,
-		newSortOrder, taskID, user.ID,
-	)
-	if err != nil {
-		c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})
-		return
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		c.JSON(404, gin.H{"message": "Task reordering failed"})
-		return
-	}
-
-	task, err := h.getTask(taskID, user.ID)
-	if err != nil {
-		c.JSON(200, gin.H{"id": taskID, "sort_order": newSortOrder})
+	task, getErr := h.getTask(taskID, user.ID)
+	if getErr != nil {
+		c.JSON(200, gin.H{"id": taskID, "sort_order": orders[taskID]})
 		return
 	}
 	c.JSON(200, task)
+}
+
+type reorderManyRequest struct {
+	IDs    []string `json:"ids"`
+	PrevID *string  `json:"prev_id"`
+	NextID *string  `json:"next_id"`
+}
+
+func (h *TaskHandler) ReorderTasks(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	var body reorderManyRequest
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.IDs) == 0 {
+		c.JSON(400, gin.H{"message": "ids are required"})
+		return
+	}
+
+	orders, err := h.applyReorder(user.ID, body.IDs, derefTaskID(body.PrevID), derefTaskID(body.NextID))
+	if err != nil {
+		writeReorderError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"ids": body.IDs, "sort_orders": orders})
+}
+
+type reorderError struct {
+	Status  int
+	Message string
+}
+
+func (e *reorderError) Error() string { return e.Message }
+
+func writeReorderError(c *gin.Context, err error) {
+	if re, ok := err.(*reorderError); ok {
+		c.JSON(re.Status, gin.H{"message": re.Message})
+		return
+	}
+	c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})
+}
+
+func (h *TaskHandler) applyReorder(userID int, ids []string, prevID, nextID string) (map[string]string, error) {
+	if len(ids) == 0 || len(ids) > 100 {
+		return nil, &reorderError{Status: 400, Message: "invalid ids length"}
+	}
+	moving := make(map[string]bool, len(ids))
+	clean := make([]string, 0, len(ids))
+	for _, raw := range ids {
+		id := strings.TrimSpace(raw)
+		if id == "" || moving[id] {
+			return nil, &reorderError{Status: 400, Message: "duplicate or empty task id"}
+		}
+		if _, err := h.getTask(id, userID); err == sql.ErrNoRows {
+			return nil, &reorderError{Status: 404, Message: "Task not found or unauthorized"}
+		} else if err != nil {
+			return nil, err
+		}
+		moving[id] = true
+		clean = append(clean, id)
+	}
+
+	prevRank, err := h.neighborSortOrder(userID, prevID, moving)
+	if err != nil {
+		return nil, &reorderError{Status: 400, Message: err.Error()}
+	}
+	nextRank, err := h.neighborSortOrder(userID, nextID, moving)
+	if err != nil {
+		return nil, &reorderError{Status: 400, Message: err.Error()}
+	}
+
+	tx, err := h.DB.Beginx()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	orders := make(map[string]string, len(clean))
+	cursor := prevRank
+	for _, id := range clean {
+		rank, err := models.RankBetween(cursor, nextRank)
+		if err != nil {
+			return nil, &reorderError{Status: 400, Message: "Could not compute LexoRank"}
+		}
+		res, err := tx.Exec(`UPDATE tasks SET sort_order = ? WHERE id = ? AND user_id = ?`, rank, id, userID)
+		if err != nil {
+			return nil, err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return nil, &reorderError{Status: 404, Message: "Task reordering failed"}
+		}
+		orders[id] = rank
+		cursor = rank
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }
 
 func derefTaskID(id *string) string {
@@ -265,12 +335,12 @@ func derefTaskID(id *string) string {
 	return strings.TrimSpace(*id)
 }
 
-func (h *TaskHandler) neighborSortOrder(userID int, neighborID, movingID string) (string, error) {
+func (h *TaskHandler) neighborSortOrder(userID int, neighborID string, moving map[string]bool) (string, error) {
 	if neighborID == "" {
 		return "", nil
 	}
-	if neighborID == movingID {
-		return "", fmt.Errorf("neighbor cannot be the moved task")
+	if moving[neighborID] {
+		return "", fmt.Errorf("neighbor cannot be one of the moved tasks")
 	}
 	task, err := h.getTask(neighborID, userID)
 	if err == sql.ErrNoRows {

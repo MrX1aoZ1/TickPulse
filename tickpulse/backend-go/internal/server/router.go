@@ -56,6 +56,7 @@ func NewRouter(cfg config.Config, database *sqlx.DB) *gin.Engine {
 	{
 		tasks.GET("", taskH.GetTasks)
 		tasks.POST("", taskH.CreateTask)
+		tasks.PUT("/reorder", taskH.ReorderTasks)
 		tasks.PUT("/:taskId/reorder", taskH.UpdateTaskOrder)
 		tasks.GET("/:taskId", taskH.GetTaskByID)
 		tasks.PUT("/:taskId", taskH.UpdateTask)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 import {
@@ -30,6 +30,10 @@ export default function TaskList() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingHeader, setIsEditingHeader] = useState(false);
   const [editHeaderName, setEditHeaderName] = useState('');
+  const [draggingId, setDraggingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  const taskKey = (t) => String(t?.id || t?.taskId || '');
 
   // 輔助函式：日期格式化
   const formatToLocalDateStr = (dateInput) => {
@@ -107,17 +111,58 @@ export default function TaskList() {
     return true;
   });
 
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [selectedView, selectedCategoryId, activeFilter]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setSelectedIds([]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
+  const moveSelectedBlock = (list, movingKeys, sourceIndex, destIndex) => {
+    const moving = new Set(movingKeys);
+    const block = list.filter((t) => moving.has(taskKey(t)));
+    const without = list.filter((t) => !moving.has(taskKey(t)));
+    const insertAt = destIndex > sourceIndex
+      ? list.slice(0, destIndex + 1).filter((t) => !moving.has(taskKey(t))).length
+      : list.slice(0, destIndex).filter((t) => !moving.has(taskKey(t))).length;
+    const next = [...without];
+    next.splice(insertAt, 0, ...block);
+    return next;
+  };
+
+  const onDragStart = (start) => {
+    setDraggingId(start.draggableId);
+  };
+
   const onDragEnd = async (result) => {
+    setDraggingId(null);
     const { destination, source, draggableId } = result;
-    if (!destination || destination.index === source.index) return;
+    if (!destination) return;
+
+    const movingKeys = selectedIds.includes(draggableId) && selectedIds.length > 1
+      ? filteredTasks.filter((t) => selectedIds.includes(taskKey(t))).map(taskKey)
+      : [draggableId];
+
+    if (movingKeys.length === 1 && destination.index === source.index) return;
 
     const previous = tasks;
-    const reorderedFiltered = [...filteredTasks];
-    const [removed] = reorderedFiltered.splice(source.index, 1);
-    reorderedFiltered.splice(destination.index, 0, removed);
+    const reorderedFiltered = moveSelectedBlock(
+      filteredTasks,
+      movingKeys,
+      source.index,
+      destination.index,
+    );
+    const beforeIds = filteredTasks.map(taskKey).join(',');
+    const afterIds = reorderedFiltered.map(taskKey).join(',');
+    if (beforeIds === afterIds) return;
 
-    const taskKey = (t) => String(t.id || t.taskId);
+    const movingSet = new Set(movingKeys);
     const globalIndices = filteredTasks.map((ft) =>
       tasks.findIndex((t) => taskKey(t) === taskKey(ft))
     );
@@ -129,12 +174,15 @@ export default function TaskList() {
     });
     dispatch({ type: 'SET_TASKS', payload: updatedAllTasks });
 
-    const idx = destination.index;
-    const prevTask = reorderedFiltered[idx - 1] || null;
-    const nextTask = reorderedFiltered[idx + 1] || null;
+    const block = reorderedFiltered.filter((t) => movingSet.has(taskKey(t)));
+    const firstIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[0]));
+    const lastIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[block.length - 1]));
+    const prevTask = firstIdx > 0 ? reorderedFiltered[firstIdx - 1] : null;
+    const nextTask = lastIdx < reorderedFiltered.length - 1 ? reorderedFiltered[lastIdx + 1] : null;
 
     try {
-      await taskApi.updateTaskOrder(draggableId, {
+      await taskApi.updateTasksOrder({
+        ids: block.map(taskKey),
         prev_id: prevTask ? taskKey(prevTask) : null,
         next_id: nextTask ? taskKey(nextTask) : null,
       });
@@ -143,6 +191,39 @@ export default function TaskList() {
       showError('Failed to save task order');
       dispatch({ type: 'SET_TASKS', payload: previous });
     }
+  };
+
+  const handleSelectTask = (e, task, index) => {
+    const id = taskKey(task);
+    if (e.shiftKey) {
+      let anchor = selectedTaskId
+        ? filteredTasks.findIndex((t) => taskKey(t) === String(selectedTaskId))
+        : -1;
+      if (anchor === -1 && selectedIds.length > 0) {
+        anchor = filteredTasks.findIndex((t) => taskKey(t) === selectedIds[selectedIds.length - 1]);
+      }
+      if (anchor === -1) anchor = index;
+      const from = Math.min(anchor, index);
+      const to = Math.max(anchor, index);
+      setSelectedIds(filteredTasks.slice(from, to + 1).map(taskKey));
+      dispatch({ type: 'SELECT_TASK', payload: id });
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return [...next];
+      });
+      dispatch({ type: 'SELECT_TASK', payload: id });
+      return;
+    }
+    setSelectedIds([id]);
+    dispatch({ type: 'SELECT_TASK', payload: id });
   };
 
   const handleAddTask = async (e) => {
@@ -211,7 +292,14 @@ export default function TaskList() {
             className={`flex items-center space-x-2 group ${isEditable ? 'cursor-pointer' : ''}`}
             onClick={() => { if (isEditable) { setIsEditingHeader(true); setEditHeaderName(headerTitle); } }}
           >
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">{headerTitle}</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+              {headerTitle}
+              {selectedIds.length > 1 ? (
+                <span className="ml-2 text-xs font-normal text-zinc-500 tracking-normal">
+                  {selectedIds.length} selected
+                </span>
+              ) : null}
+            </h1>
             {isEditable && <PencilIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150" />}
           </div>
         )}
@@ -235,7 +323,7 @@ export default function TaskList() {
       ) : null}
 
       {/* 🎯 封裝 DragDropContext */}
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
         {/* 📜 任務列表主滾動區 */}
         <Droppable droppableId="task-list-droppable">
           {(provided) => (
@@ -253,8 +341,10 @@ export default function TaskList() {
                 filteredTasks.map((task, index) => {
                   const isDone = task.status === 'completed';
                   const isTrash = task.status === 'cancelled' || task.status === 'deleted';
-                  const isSelected = selectedTaskId && String(task.id || task.taskId) === String(selectedTaskId);
                   const stringId = String(task.id || task.taskId);
+                  const isMultiSelected = selectedIds.includes(stringId);
+                  const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
+                  const isGhost = Boolean(draggingId) && isMultiSelected && draggingId !== stringId && selectedIds.includes(draggingId);
 
                   return (
                     <Draggable key={stringId} draggableId={stringId} index={index}>
@@ -262,28 +352,28 @@ export default function TaskList() {
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          onClick={() => {
-                            const targetId = task.id || task.taskId;
-                            dispatch({ type: 'SELECT_TASK', payload: targetId });
-                          }}
-                          // 🎯 整合 @hello-pangea/dnd 的動態拖曳快照狀態 (snapshot.isDragging)
-                          className={`group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border cursor-pointer transition-colors duration-150 ${
-                            snapshot.isDragging 
-                              ? 'bg-zinc-900 border-blue-500/50 shadow-2xl scale-[1.02]' 
-                              : isSelected 
-                                ? 'bg-zinc-900 border-zinc-800/80 text-white' 
+                          onClick={(e) => handleSelectTask(e, task, index)}
+                          className={`relative group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                            snapshot.isDragging
+                              ? 'bg-zinc-900 border-blue-500/50 shadow-2xl'
+                              : isMultiSelected || isPrimary
+                                ? 'bg-zinc-900 border-zinc-700 text-white'
                                 : 'bg-transparent border-transparent hover:bg-zinc-900/40 hover:border-zinc-900/60'
-                          }`}
+                          } ${isGhost ? 'opacity-30' : ''}`}
                         >
                           <div className="flex items-center space-x-3 min-w-0 flex-1">
-                            
-                            {/* 🎯 把手（Drag Handle）：只有這裡可以抓取拖曳，點擊其他地方依然是選取 Task */}
                             <div
+                              {...provided.dragHandleProps}
+                              onClick={(e) => e.stopPropagation()}
                               className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100 flex-shrink-0"
                             >
                               <Bars3Icon className="w-4 h-4" />
                             </div>
+                            {snapshot.isDragging && selectedIds.includes(stringId) && selectedIds.length > 1 && (
+                              <span className="absolute -top-2 -right-2 z-10 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-[10px] font-semibold text-white flex items-center justify-center">
+                                {selectedIds.length}
+                              </span>
+                            )}
 
                             {!isTrash ? (
                               <button

@@ -92,7 +92,7 @@ npm run dev -- -p 3001
 
 浏览器打开 http://localhost:3001 。
 
-分类和任务拖曳排序时，前端只提交前后邻居的 id（`prev_id` / `next_id`），**LexoRank 在 Go 后端计算**。请使用 `go run ./cmd/server`，不要用旧 Node 后端测拖曳。启动时若 `Tasks.sort_order` 仍是 DOUBLE，会自动改成 VARCHAR 并重写为 LexoRank。
+分类和任务拖曳排序时，前端只提交前后邻居的 id（`prev_id` / `next_id`），**LexoRank 在 Go 后端计算**。任务列表支持 Ctrl/Cmd 多选、Shift 范围选，拖曳其中一个会把整组按相对顺序一起移动（`PUT /api/tasks/reorder`，body 含 `ids`）。请使用 `go run ./cmd/server`，不要用旧 Node 后端测拖曳。启动时若 `Tasks.sort_order` 仍是 DOUBLE，会自动改成 VARCHAR 并重写为 LexoRank。
 
 ## 5. 准备一个能登录前端的测试账号
 
