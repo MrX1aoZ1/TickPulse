@@ -7,6 +7,19 @@ import { v4 as uuidv4 } from 'uuid';
 // API base URL - change this to your backend URL
 const API_BASE_URL = 'http://localhost:3000';
 
+function sortByRank(items) {
+  return [...items].sort((a, b) =>
+    String(a.sort_order || '').localeCompare(String(b.sort_order || ''))
+  );
+}
+
+function normalizeTasks(tasks) {
+  return sortByRank(tasks.map((task) => ({
+    ...task,
+    sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
+  })));
+}
+
 
 const TaskContext = createContext();
 
@@ -53,7 +66,7 @@ export function TaskProvider({ children }) {
       try {
         const tasks = await taskApi.getTasks();
         if (Array.isArray(tasks)) {
-          dispatch({ type: 'SET_TASKS', payload: tasks });
+          dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
         }
 
         const categories = await taskApi.getAllCategories();
@@ -101,7 +114,7 @@ export function TaskProvider({ children }) {
       // 🚨 關鍵修正：刪除了對 localStorage token 的依賴
       const tasks = await taskApi.getTasks();
       if (Array.isArray(tasks)) {
-        dispatch({ type: 'SET_TASKS', payload: tasks });
+        dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error);
@@ -190,6 +203,13 @@ export const taskApi = {
     fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       credentials: 'include',
+    }),
+  updateTaskOrder: async (taskId, { prev_id = null, next_id = null } = {}) =>
+    fetchWithAuth(`/api/tasks/${taskId}/reorder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ prev_id, next_id }),
     }),
 
   // updateTaskStatus: async (id, status) =>
@@ -405,12 +425,11 @@ const taskReducer = (state, action) => {
 }
 
     case 'SET_CATEGORIES': {
+      // 不要在這裡按 sort_order 再排一次。拖曳後 array 已經是新順序，
+      // 但被拖的那一筆還是舊 rank；若立刻 localeCompare，列表會彈回原位再跳到新位，整頁閃一下。
       return {
         ...state,
-        // 🛡️ 終極防線：進到全域狀態前，一律依據字串字典序排好隊
-        categories: [...action.payload].sort((a, b) => 
-          String(a.sort_order).localeCompare(String(b.sort_order))
-        )
+        categories: action.payload,
       };
     }
 
@@ -418,10 +437,7 @@ const taskReducer = (state, action) => {
       const updatedCategories = [...state.categories, action.payload];
       return {
         ...state,
-        // 🛡️ 新增分類後也立刻排序，防止畫面的 index 錯位
-        categories: updatedCategories.sort((a, b) => 
-          String(a.sort_order).localeCompare(String(b.sort_order))
-        )
+        categories: updatedCategories,
       };
     }
 
@@ -485,7 +501,11 @@ const taskReducer = (state, action) => {
     case 'SET_TASKS':
       return {
         ...state,
-        tasks: action.payload
+        // 與分類相同：拖曳後維持 array 順序，只正規化 sort_order 字串，不要重新排序。
+        tasks: (action.payload || []).map((task) => ({
+          ...task,
+          sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
+        })),
       };
     default:
       return state;

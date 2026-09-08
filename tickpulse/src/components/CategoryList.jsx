@@ -150,18 +150,10 @@ export default function CategoryList() {
     });
 
     try {
-      const response = await taskApi.updateCategoryOrder(draggableId, {
+      await taskApi.updateCategoryOrder(draggableId, {
         prev_id: prevCategory?.id ?? null,
         next_id: nextCategory?.id ?? null,
       });
-      if (response?.sort_order) {
-        const withServerRank = reorderedCategories.map((cat) =>
-          cat.id === draggableId || cat.id?.toString() === draggableId
-            ? { ...cat, sort_order: String(response.sort_order) }
-            : cat
-        );
-        dispatch({ type: 'SET_CATEGORIES', payload: withServerRank });
-      }
     } catch (error) {
       console.error('Failed to update order in backend:', error);
       showError('Failed to save order');

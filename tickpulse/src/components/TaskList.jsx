@@ -107,37 +107,41 @@ export default function TaskList() {
     return true;
   });
 
-  // 🎯 @hello-pangea/dnd 拖曳結束後的處理函式
+  // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
   const onDragEnd = async (result) => {
-    const { destination, source } = result;
-    // 如果沒有放進有效的 Droppable 區域，或者放回原位，直接不處理
+    const { destination, source, draggableId } = result;
     if (!destination || destination.index === source.index) return;
 
-    // 1. 複製目前的過濾任務清單，調換順序
+    const previous = tasks;
     const reorderedFiltered = [...filteredTasks];
     const [removed] = reorderedFiltered.splice(source.index, 1);
     reorderedFiltered.splice(destination.index, 0, removed);
 
-    // 2. 對齊並覆寫回全域的總 tasks 陣列中 (確保其他分類的資料不被影響)
-    const updatedAllTasks = [...tasks];
-    const globalIndices = filteredTasks.map(ft => 
-      tasks.findIndex(t => (t.id || t.taskId) === (ft.id || ft.taskId))
+    const taskKey = (t) => String(t.id || t.taskId);
+    const globalIndices = filteredTasks.map((ft) =>
+      tasks.findIndex((t) => taskKey(t) === taskKey(ft))
     );
-
+    const updatedAllTasks = [...tasks];
     globalIndices.forEach((globalIdx, i) => {
       if (globalIdx !== -1) {
         updatedAllTasks[globalIdx] = reorderedFiltered[i];
       }
     });
-
-    // 3. 更新前端全域 Context 狀態
     dispatch({ type: 'SET_TASKS', payload: updatedAllTasks });
 
+    const idx = destination.index;
+    const prevTask = reorderedFiltered[idx - 1] || null;
+    const nextTask = reorderedFiltered[idx + 1] || null;
+
     try {
-      // 4. 後端同步 (可選：留著未來接 API 排序時使用)
-      console.log("New task order via dnd:", reorderedFiltered.map(t => t.task_name));
+      await taskApi.updateTaskOrder(draggableId, {
+        prev_id: prevTask ? taskKey(prevTask) : null,
+        next_id: nextTask ? taskKey(nextTask) : null,
+      });
     } catch (error) {
+      console.error('Failed to update task order:', error);
       showError('Failed to save task order');
+      dispatch({ type: 'SET_TASKS', payload: previous });
     }
   };
 
@@ -264,7 +268,7 @@ export default function TaskList() {
                             dispatch({ type: 'SELECT_TASK', payload: targetId });
                           }}
                           // 🎯 整合 @hello-pangea/dnd 的動態拖曳快照狀態 (snapshot.isDragging)
-                          className={`group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border cursor-pointer transition-all duration-150 ${
+                          className={`group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border cursor-pointer transition-colors duration-150 ${
                             snapshot.isDragging 
                               ? 'bg-zinc-900 border-blue-500/50 shadow-2xl scale-[1.02]' 
                               : isSelected 
