@@ -91,7 +91,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 		username = body.Email[:i]
 	}
 	hashStr := string(hashed)
-	newUser, err := h.Users.CreateUserAccount(body.Email, username, "local", body.Email, &hashStr)
+	newUser, err := h.Users.CreateUserAccount(body.Email, username, "local", body.Email, &hashStr, nil)
 	if err != nil {
 		log.Println("Sign-up error:", err)
 		utils.Error(c, "Server error during sign-up", 500)
@@ -218,7 +218,7 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 			return
 		}
 		if existing == nil {
-			created, err := h.Users.CreateUserAccount(email, username, "google", profile.ID, nil)
+			created, err := h.Users.CreateUserAccount(email, username, "google", profile.ID, nil, nil)
 			if err != nil {
 				log.Println("Google Callback Error:", err)
 				c.Redirect(http.StatusFound, loginURL+"?error=server_error")

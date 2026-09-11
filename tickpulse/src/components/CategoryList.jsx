@@ -162,7 +162,7 @@ export default function CategoryList() {
   };
 
   return (
-    <div className="w-64 h-full bg-[#1e1e1e] text-zinc-300 flex flex-col py-4 border-r border-zinc-800/40 select-none">
+    <div className="w-64 h-full bg-white dark:bg-[#1e1e1e] text-zinc-700 dark:text-zinc-300 flex flex-col py-4 border-r border-zinc-200 dark:border-zinc-800/40 select-none">
 
       {/* 智能過濾器 */}
       <div className="space-y-0.5 px-2 mb-6">
@@ -173,8 +173,8 @@ export default function CategoryList() {
               key={filter.id}
               onClick={() => handleSelectFilter(filter.id)}
               className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
-                ? 'bg-zinc-800 text-white font-medium'
-                : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
+                ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
                 }`}
             >
               <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />
@@ -187,9 +187,9 @@ export default function CategoryList() {
       <div className="flex-1 overflow-y-auto px-2 space-y-6">
         {/* 自訂分類區 (Lists) */}
         <div>
-          <div className="px-3 mb-2 flex items-center justify-between text-xs font-bold text-zinc-600 tracking-wider uppercase">
+          <div className="px-3 mb-2 flex items-center justify-between text-xs font-bold text-zinc-400 dark:text-zinc-600 tracking-wider uppercase">
             <span>Lists</span>
-            <button onClick={() => setIsAdding(!isAdding)} className="text-zinc-500 hover:text-zinc-300">
+            <button onClick={() => setIsAdding(!isAdding)} className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300">
               <PlusIcon className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -201,7 +201,7 @@ export default function CategoryList() {
                 placeholder="New list..."
                 value={newCategoryName}
                 onChange={e => setNewCategoryName(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-800 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500"
                 autoFocus
               />
             </form>
@@ -231,8 +231,8 @@ export default function CategoryList() {
                             {...dragProvided.draggableProps}
                             {...dragProvided.dragHandleProps}
                             onClick={() => handleSelectCategory(category.id)}
-                            className={`group flex items-center justify-between px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${isSelected ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
-                              } ${snapshot.isDragging ? 'bg-zinc-800/80 shadow-lg border border-zinc-700/40' : ''}`}
+                            className={`group flex items-center justify-between px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${isSelected ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
+                              } ${snapshot.isDragging ? 'bg-zinc-100 shadow-lg border border-zinc-200 dark:bg-zinc-800/80 dark:border-zinc-700/40' : ''}`}
                             style={{ ...dragProvided.draggableProps.style }}
                           >
                             <div className="flex items-center min-w-0 flex-1">
@@ -243,7 +243,7 @@ export default function CategoryList() {
                                   value={editName}
                                   onChange={e => setEditName(e.target.value)}
                                   onClick={e => e.stopPropagation()}
-                                  className="bg-zinc-700 text-white border border-zinc-600 rounded px-1.5 py-0.5 text-xs w-32 focus:outline-none"
+                                  className="bg-white dark:bg-zinc-700 text-zinc-800 dark:text-white border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-0.5 text-xs w-32 focus:outline-none"
                                   autoFocus
                                   onBlur={handleSaveEdit}
                                   onKeyDown={e => e.key === 'Enter' && handleSaveEdit(e)}
@@ -286,7 +286,7 @@ export default function CategoryList() {
         </div>
 
         {/* 狀態過濾區 */}
-        <div className="border-t border-zinc-800/40 pt-4">
+        <div className="border-t border-zinc-200 dark:border-zinc-800/40 pt-4">
           <div className="space-y-0.5">
             {statusFilters.map((filter) => {
               const isActive = selectedView === 'filter' && activeFilter === filter.id;
@@ -295,8 +295,8 @@ export default function CategoryList() {
                   key={filter.id}
                   onClick={() => handleSelectFilter(filter.id)}
                   className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
-                    ? 'bg-zinc-800 text-white font-medium'
-                    : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
+                    ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
                     }`}
                 >
                   <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />

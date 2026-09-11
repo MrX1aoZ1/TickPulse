@@ -1,10 +1,10 @@
 'use client';
 
-export function CheckSquareIcon({ className = "w-5 h-5", fill = false }) {
+export function CheckSquareIcon({ className = "w-5 h-5", fill = false, checkStroke }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" w="18" h="18" rx="5" ry="5" fill={fill ? "currentColor" : "none"} />
-      <path d="M9 11l2 2 4-4" stroke={fill ? "#181818" : "currentColor"} strokeWidth={3} />
+      <path d="M9 11l2 2 4-4" stroke={fill ? (checkStroke || "#181818") : "currentColor"} strokeWidth={3} />
     </svg>
   );
 }

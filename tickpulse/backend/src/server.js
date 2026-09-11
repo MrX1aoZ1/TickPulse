@@ -48,8 +48,6 @@ app.use(session({
         await createCategoryTable();
         await createTaskTable();
         await createSubtaskTable();
-        //await createTimerTable();
-        //console.log('All tables created successfully');
     } catch (error) {
         console.error('Error during initialization:', error);
     }

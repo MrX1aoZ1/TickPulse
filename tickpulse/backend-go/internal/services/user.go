@@ -31,7 +31,7 @@ func (s *UserService) GetUserByEmail(email string) (*models.UserCredentials, err
 
 func (s *UserService) GetUserByID(id int) (*models.User, error) {
 	var user models.User
-	err := s.DB.Get(&user, `SELECT id, email, username, created_at FROM Users WHERE id = ?`, id)
+	err := s.DB.Get(&user, `SELECT id, email, username, license_key, created_at FROM Users WHERE id = ?`, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -73,14 +73,19 @@ func (s *UserService) LinkProviderToUser(userID int, provider, providerID string
 	return err
 }
 
-func (s *UserService) CreateUserAccount(email, username, provider, providerID string, password *string) (*models.User, error) {
+func (s *UserService) SetLicenseKey(userID int, key string) error {
+	_, err := s.DB.Exec(`UPDATE Users SET license_key = ? WHERE id = ?`, key, userID)
+	return err
+}
+
+func (s *UserService) CreateUserAccount(email, username, provider, providerID string, password *string, licenseKey *string) (*models.User, error) {
 	tx, err := s.DB.Beginx()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`INSERT INTO Users (email, username) VALUES (?, ?)`, email, username)
+	res, err := tx.Exec(`INSERT INTO Users (email, username, license_key) VALUES (?, ?, ?)`, email, username, licenseKey)
 	if err != nil {
 		return nil, err
 	}

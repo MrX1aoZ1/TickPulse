@@ -118,6 +118,10 @@ go run ./cmd/inituser
 
 然后在 http://localhost:3001/login 登录。
 
+## 授权密钥（未接入产品流程）
+
+注册和日历**暂时不检查** license，避免本地/演示测试被挡住。目录和 `GET/PUT /api/license` 仍留在 Go 里，以后接支付再挂到注册或日历即可。
+
 ## 6. 跑测试
 
 ### Go 自动化测试（推荐）
@@ -126,12 +130,13 @@ go run ./cmd/inituser
 
 ```powershell
 cd F:\CSCI3100_Project\tickpulse\backend-go
-go test ./internal/models ./test_module -count=1 -v
+go test ./internal/models ./internal/license ./test_module -count=1 -v
 ```
 
 覆盖内容：
 
-- `internal/models`：任务/分类排序（不连库）
+- `internal/license`：预留的演示密钥目录（产品流程尚未使用）
+- `test_module/license_test.go`：预留的 `/api/license`（未登录 401；注册不要求 key）
 - `test_module/initial_api_test.go`：注册 → 登录 → 建任务 → 列分类 → 登出后再建任务应 401
 - `test_module/session_test.go`：双用户 session 隔离、伪造 cookie、登出失效
 - `test_module/crud_security_test.go`：错密码、重复邮箱、越权读写删、Inbox 不可删、删分类后任务回 Inbox

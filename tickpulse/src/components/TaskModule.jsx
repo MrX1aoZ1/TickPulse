@@ -86,7 +86,7 @@ export default function TaskModule() {
   return (
     <div 
       id="task-module-container" 
-      className={`flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200 ${isResizing ? 'select-none' : ''}`}
+      className={`flex-1 flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 ${isResizing ? 'select-none' : ''}`}
     >
       {/* 任務列表與詳情面板主佈局區 */}
       <div className="flex flex-1 overflow-hidden w-full h-full relative">
@@ -102,7 +102,7 @@ export default function TaskModule() {
         {/* 2. 純淨分界線 (無任何視覺干擾，游標常態) */}
         <div
           onMouseDown={handleMouseDown}
-          className="w-[1px] h-full cursor-ew-resize bg-zinc-900 relative z-30"
+          className="w-[1px] h-full cursor-ew-resize bg-zinc-200 dark:bg-zinc-900 relative z-30"
         >
           {/* 觸控擴展層 */}
           <div className="absolute top-0 -left-1 -right-1 bottom-0 bg-transparent cursor-ew-resize z-10" />

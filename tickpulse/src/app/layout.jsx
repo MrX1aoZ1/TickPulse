@@ -31,7 +31,7 @@ export const metadata = {
  */
 export default function RootLayout({ children }) {
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" className="dark" suppressHydrationWarning>
       <body>
         {/* 🎯 關鍵：所有的 Providers 必須塞在最外層，這樣全站所有頁面與子 Layout 才能調用 useAuth */}
         <ToastProvider>

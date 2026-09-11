@@ -26,10 +26,8 @@ const TaskContext = createContext();
 /**
  * @typedef {object} TaskState
  * @property {Array<object>} tasks - The list of tasks.
- * @property {Array<object>} projects - The list of projects.
  * @property {Array<object>} categories - The list of categories.
  * @property {string|null} selectedTaskId - The ID of the currently selected task.
- * @property {string|null} selectedProjectId - The ID of the currently selected project.
  * @property {string|null} selectedCategoryId - The ID of the currently selected category.
  * @property {string} selectedView - The current view type ('project', 'filter', 'category').
  * @property {string} activeFilter - The currently active filter ('all', 'today', 'completed').
@@ -45,7 +43,7 @@ const TaskContext = createContext();
 
 /**
  * Provides task-related state and actions to its children components.
- * Manages tasks, projects, categories, and UI selections.
+ * Manages tasks, categories, and UI selections.
  * Handles data fetching, local storage persistence, and API interactions.
  * @param {object} props - The component props.
  * @param {React.ReactNode} props.children - The child components to be wrapped by the provider.

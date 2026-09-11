@@ -108,7 +108,7 @@ export default function TaskDetail() {
 
   if (!selectedTask) {
     return (
-      <div className="w-full border-l border-zinc-900 bg-zinc-950 h-full flex items-center justify-center text-zinc-600 text-sm flex-shrink-0 select-none">
+      <div className="w-full border-l border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 h-full flex items-center justify-center text-zinc-500 dark:text-zinc-600 text-sm flex-shrink-0 select-none">
         請選取任務以查看詳細資訊
       </div>
     );
@@ -246,10 +246,10 @@ export default function TaskDetail() {
   const todayStr = getTodayStr();
 
   return (
-    <div key={selectedTaskId} className="w-full border-l border-zinc-900 bg-zinc-950 h-full flex flex-col justify-between select-none relative">
+    <div key={selectedTaskId} className="w-full border-l border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 h-full flex flex-col justify-between select-none relative">
       
       {/* 1. 頂部 Meta 欄位 */}
-      <div className="h-12 px-6 flex items-center justify-between border-b border-b-zinc-900/60 bg-zinc-950 flex-shrink-0 relative">
+      <div className="h-12 px-6 flex items-center justify-between border-b border-zinc-200 dark:border-b-zinc-900/60 bg-white dark:bg-zinc-950 flex-shrink-0 relative">
         <div className="flex items-center space-x-3">
           {isDeleted ? (
             <button onClick={handleStatusAction} className="p-1 hover:bg-zinc-900 rounded text-zinc-400">
@@ -416,7 +416,7 @@ export default function TaskDetail() {
             onBlur={() => updateTaskField('task_name', taskName.trim())}
             onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
             placeholder="任務名稱"
-            className={`w-full bg-transparent text-xl font-bold focus:outline-none text-white tracking-tight ${
+            className={`w-full bg-transparent text-xl font-bold focus:outline-none text-zinc-900 dark:text-white tracking-tight ${
               (isCompleted || isCancelled) ? 'line-through text-zinc-600 decoration-zinc-600' : ''
             }`}
           />
@@ -429,7 +429,7 @@ export default function TaskDetail() {
       </div>
 
       {/* 3. 底部工具列 */}
-      <div className="h-11 px-4 border-t border-zinc-900/60 bg-zinc-950 flex items-center justify-between flex-shrink-0 text-zinc-500">
+      <div className="h-11 px-4 border-t border-zinc-200 dark:border-zinc-900/60 bg-white dark:bg-zinc-950 flex items-center justify-between flex-shrink-0 text-zinc-500">
         <div className="flex items-center space-x-1 text-xs hover:text-zinc-300 transition-colors max-w-[200px] truncate">
           <FolderIcon className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
           <select

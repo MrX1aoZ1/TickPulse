@@ -73,6 +73,7 @@ func EnsureTables(database *sqlx.DB) error {
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			email VARCHAR(255) NOT NULL UNIQUE,
 			username VARCHAR(50),
+			license_key VARCHAR(19) NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
@@ -143,11 +144,31 @@ func EnsureTables(database *sqlx.DB) error {
 			return err
 		}
 	}
+	if err := migrateUserLicenseKey(database); err != nil {
+		return err
+	}
 	if err := migrateTaskSortOrder(database); err != nil {
 		return err
 	}
 	log.Println("All tables created or already exist")
 	return nil
+}
+
+func migrateUserLicenseKey(database *sqlx.DB) error {
+	var n int
+	err := database.Get(&n, `
+		SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'Users'
+		  AND COLUMN_NAME = 'license_key'`)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = database.Exec(`ALTER TABLE Users ADD COLUMN license_key VARCHAR(19) NULL`)
+	return err
 }
 
 func migrateTaskSortOrder(database *sqlx.DB) error {

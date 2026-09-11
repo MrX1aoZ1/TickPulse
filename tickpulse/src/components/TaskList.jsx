@@ -274,9 +274,9 @@ export default function TaskList() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-zinc-950 text-zinc-200 min-w-0 select-none">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 min-w-0 select-none">
       {/* 動態標題 */}
-      <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-900/40">
+      <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/40">
         {isEditingHeader ? (
           <input
             type="text"
@@ -284,7 +284,7 @@ export default function TaskList() {
             onChange={(e) => setEditHeaderName(e.target.value)}
             onBlur={handleSaveHeaderRename}
             onKeyDown={(e) => e.key === 'Enter' && handleSaveHeaderRename()}
-            className="text-xl font-semibold bg-zinc-900 text-white border border-zinc-700 rounded px-2 py-0.5 focus:outline-none focus:border-blue-500"
+            className="text-xl font-semibold bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0.5 focus:outline-none focus:border-blue-500"
             autoFocus
           />
         ) : (
@@ -292,7 +292,7 @@ export default function TaskList() {
             className={`flex items-center space-x-2 group ${isEditable ? 'cursor-pointer' : ''}`}
             onClick={() => { if (isEditable) { setIsEditingHeader(true); setEditHeaderName(headerTitle); } }}
           >
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
               {headerTitle}
               {selectedIds.length > 1 ? (
                 <span className="ml-2 text-xs font-normal text-zinc-500 tracking-normal">
@@ -308,7 +308,7 @@ export default function TaskList() {
       {/* 📥 頂部新增 */}
       {selectedView !== 'filter' || (activeFilter !== 'completed' && activeFilter !== 'cancelled' && activeFilter !== 'deleted') ? (
         <form onSubmit={handleAddTask} className="px-6 pt-4 pb-2">
-          <div className="flex items-center space-x-3 bg-zinc-900/40 border border-zinc-800/80 rounded-lg px-3 py-2 focus-within:border-zinc-700 transition-all">
+          <div className="flex items-center space-x-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/80 rounded-lg px-3 py-2 focus-within:border-zinc-400 dark:focus-within:border-zinc-700 transition-all">
             <PlusIcon className="w-4 h-4 text-zinc-500 flex-shrink-0" />
             <input
               type="text"
@@ -316,7 +316,7 @@ export default function TaskList() {
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
               disabled={isSubmitting}
-              className="w-full bg-transparent border-none outline-none text-sm placeholder-zinc-600 text-zinc-200"
+              className="w-full bg-transparent border-none outline-none text-sm placeholder-zinc-400 dark:placeholder-zinc-600 text-zinc-800 dark:text-zinc-200"
             />
           </div>
         </form>
@@ -344,6 +344,7 @@ export default function TaskList() {
                   const stringId = String(task.id || task.taskId);
                   const isMultiSelected = selectedIds.includes(stringId);
                   const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
+                  const isSelectedRow = isMultiSelected || isPrimary;
                   const isGhost = Boolean(draggingId) && isMultiSelected && draggingId !== stringId && selectedIds.includes(draggingId);
 
                   return (
@@ -352,20 +353,27 @@ export default function TaskList() {
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
+                          {...(isSelectedRow ? provided.dragHandleProps : {})}
                           onClick={(e) => handleSelectTask(e, task, index)}
-                          className={`relative group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                          className={`relative group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border transition-colors duration-150 ${
+                            isSelectedRow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                          } ${
                             snapshot.isDragging
-                              ? 'bg-zinc-900 border-blue-500/50 shadow-2xl'
-                              : isMultiSelected || isPrimary
-                                ? 'bg-zinc-900 border-zinc-700 text-white'
-                                : 'bg-transparent border-transparent hover:bg-zinc-900/40 hover:border-zinc-900/60'
+                              ? 'bg-zinc-100 dark:bg-zinc-900 border-blue-500/50 shadow-2xl'
+                              : isSelectedRow
+                                ? 'bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white'
+                                : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/40 hover:border-zinc-200 dark:hover:border-zinc-900/60'
                           } ${isGhost ? 'opacity-30' : ''}`}
                         >
                           <div className="flex items-center space-x-3 min-w-0 flex-1">
                             <div
-                              {...provided.dragHandleProps}
+                              {...(isSelectedRow ? {} : provided.dragHandleProps)}
                               onClick={(e) => e.stopPropagation()}
-                              className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100 flex-shrink-0"
+                              className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
+                                isSelectedRow
+                                  ? 'opacity-100'
+                                  : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
+                              }`}
                             >
                               <Bars3Icon className="w-4 h-4" />
                             </div>
@@ -394,7 +402,7 @@ export default function TaskList() {
 
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className={`text-sm truncate ${task.status === 'completed' ? 'line-through text-zinc-600' :
-                                  task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-200'
+                                  task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-800 dark:text-zinc-200'
                                 }`}>
                                 {task.task_name || 'Untitled Task'}
                               </span>
@@ -411,7 +419,7 @@ export default function TaskList() {
                                 {task.status !== 'completed' && task.status !== 'cancelled' && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'cancelled'); }}
-                                    className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-800 transition-colors"
+                                    className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                                     title="Won't Do"
                                   >
                                     <NoSymbolIcon className="w-3.5 h-3.5" />
@@ -419,7 +427,7 @@ export default function TaskList() {
                                 )}
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'deleted'); }}
-                                  className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-800 transition-colors"
+                                  className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                                   title="Move to Trash"
                                 >
                                   <TrashIcon className="w-3.5 h-3.5" />
@@ -440,7 +448,7 @@ export default function TaskList() {
                                     }
                                   }
                                 }}
-                                className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-800 transition-colors"
+                                className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                                 title="Delete Permanently"
                               >
                                 <TrashIcon className="w-3.5 h-3.5" />

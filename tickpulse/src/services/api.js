@@ -185,16 +185,6 @@ export const taskApi = {
   // Other task API methods with similar error handling...
 };
 
-// Project-related API calls with error handling
-/**
- * @namespace projectApi
- * @description An object containing functions for interacting with project-related API endpoints.
- * (Currently a placeholder, implement methods as needed)
- */
-export const projectApi = {
-  // Similar implementation with error handling...
-};
-
 // Auth-related API calls with error handling
 /**
  * @namespace authApi

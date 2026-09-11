@@ -20,6 +20,7 @@ func NewRouter(cfg config.Config, database *sqlx.DB) *gin.Engine {
 	authH := &handlers.AuthHandler{Cfg: cfg, Users: users}
 	taskH := &handlers.TaskHandler{DB: database}
 	catH := &handlers.CategoryHandler{DB: database}
+	licH := &handlers.LicenseHandler{Users: users}
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -72,6 +73,13 @@ func NewRouter(cfg config.Config, database *sqlx.DB) *gin.Engine {
 		categories.PUT("/:categoryId/order", catH.UpdateCategoryOrder)
 		categories.PUT("/:categoryId", catH.UpdateCategory)
 		categories.DELETE("/:categoryId", catH.DeleteCategory)
+	}
+
+	lic := r.Group("/api/license")
+	lic.Use(middleware.Protect(users))
+	{
+		lic.GET("", licH.GetLicense)
+		lic.PUT("", licH.UpdateLicense)
 	}
 
 	return r

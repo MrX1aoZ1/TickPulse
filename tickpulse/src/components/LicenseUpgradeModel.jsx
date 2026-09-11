@@ -1,57 +1,41 @@
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'
+'use client';
 
-// const API_BASE_URL = 'http://localhost:3000';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
 export default function LicenseUpgradeModal({ isOpen, onUpgrade, formError }) {
   const [inputKey, setInputKey] = useState('');
-  // const [token, setToken] = useState('');
-  // const [formError, setFormError] = useState('');
   const router = useRouter();
-
-  // useEffect(() => {
-  //   if (typeof window !== 'undefined') {
-  //     const accessToken = localStorage.getItem('accessToken');
-  //     setToken(accessToken);
-  //   }
-  // }, []);
-
- 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onUpgrade(inputKey); 
+    onUpgrade(inputKey);
   };
 
-  if (!isOpen) 
-    return (<></>);
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center p-4">
-      <form onSubmit={handleSubmit}>
-        <div className="bg-white dark:bg-zinc-800 p-6 rounded-lg w-120">
+    <div className="absolute inset-0 bg-stone-100/90 dark:bg-zinc-950/90 flex items-center justify-center p-4 z-20">
+      <form onSubmit={handleSubmit} className="w-full max-w-md">
+        <div className="bg-white dark:bg-zinc-800 p-6 rounded-lg shadow-lg">
           <h2 className="text-xl font-bold mb-4">License Upgrade</h2>
-          <p className="mb-4">
-            Currnent license does not support calendar feature. Please enter advanced license key:
-            {/* <span className="block mt-2 text-sm text-blue-600">
-              Valid advanced license key:<br />
-              B2N8-LM9S-DH4Y-CQ1W<br />
-              NBUN-JW8N-SUIS-451N
-
-            </span> */}
+          <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
+            Calendar is a premium feature. Enter a premium license key to unlock it
+            (demo keys are listed in the README; no payment is required yet).
           </p>
 
           <input
             type="text"
-            className="w-full p-2 border rounded mb-4"
-            placeholder="Enter new license key"
+            className="w-full p-2 border rounded mb-4 dark:bg-zinc-900 dark:border-zinc-700"
+            placeholder="Enter premium license key"
             value={inputKey}
             onChange={(event) => {
-              // 1. Only keep alphabet and numbers
               let rawValue = event.target.value
-                .replace(/[^a-zA-Z0-9]/g, '') // Delete all non-alphanumeric characters
+                .replace(/[^a-zA-Z0-9]/g, '')
                 .toUpperCase();
 
-              // 2. Insert "-" automatically every 4 characters
               let formattedValue = '';
               for (let i = 0; i < rawValue.length; i++) {
                 if (i > 0 && i % 4 === 0 && i < 16) {
@@ -60,8 +44,6 @@ export default function LicenseUpgradeModal({ isOpen, onUpgrade, formError }) {
                 formattedValue += rawValue[i];
               }
 
-              // 3. Maximum 19 characters for the license key 
-              //    4 + 1 + 4 + 1 + 4 + 1 + 4
               if (formattedValue.length > 19) {
                 formattedValue = formattedValue.slice(0, 19);
               }
@@ -73,10 +55,10 @@ export default function LicenseUpgradeModal({ isOpen, onUpgrade, formError }) {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/webapp')}
               className="px-4 py-2 text-gray-500 hover:text-gray-700"
             >
-              Cancel
+              Back to tasks
             </button>
             <button
               type="submit"

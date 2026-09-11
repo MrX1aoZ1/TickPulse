@@ -2,46 +2,45 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 
-// Create the context
 const ThemeContext = createContext();
 
-// Provider component
+function applyThemeClass(theme) {
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+  root.setAttribute('data-theme', theme);
+}
+
 export function ThemeProvider({ children }) {
-  // Initialize theme state with 'light' or from localStorage if available
-  const [theme, setTheme] = useState('light');
-  
-  // On mount, check if there's a theme preference in localStorage
+  const [theme, setTheme] = useState('dark');
+  const [hydrated, setHydrated] = useState(false);
+
   useEffect(() => {
-    // Check for saved theme preference
     const savedTheme = localStorage.getItem('theme');
-    
-    // Check for system preference if no saved preference
-    if (!savedTheme) {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setTheme(prefersDark ? 'dark' : 'light');
+    let nextTheme = 'dark';
+
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      nextTheme = savedTheme;
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      nextTheme = 'dark';
     } else {
-      setTheme(savedTheme);
+      nextTheme = 'light';
     }
+
+    setTheme(nextTheme);
+    applyThemeClass(nextTheme);
+    setHydrated(true);
   }, []);
-  
-  // Update the document when theme changes
+
   useEffect(() => {
-    // Save to localStorage
+    if (!hydrated) return;
     localStorage.setItem('theme', theme);
-    
-    // Update document class
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-  
-  // Toggle between light and dark
+    applyThemeClass(theme);
+  }, [theme, hydrated]);
+
   const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+    setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
   };
-  
+
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {children}
@@ -49,7 +48,6 @@ export function ThemeProvider({ children }) {
   );
 }
 
-// Custom hook to use the theme context
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
@@ -57,4 +55,3 @@ export function useTheme() {
   }
   return context;
 }
-

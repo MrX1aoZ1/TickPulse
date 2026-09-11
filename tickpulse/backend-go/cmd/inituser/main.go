@@ -53,7 +53,7 @@ func main() {
 			log.Fatal(err)
 		}
 		hashStr := string(hashed)
-		user, err := users.CreateUserAccount(email, "Tester", "local", email, &hashStr)
+		user, err := users.CreateUserAccount(email, "Tester", "local", email, &hashStr, nil)
 		if err != nil {
 			log.Fatalf("create user: %v", err)
 		}
