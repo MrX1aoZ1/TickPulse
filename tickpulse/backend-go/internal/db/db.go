@@ -17,8 +17,8 @@ func Connect(cfg config.Config) *sqlx.DB {
 		log.Fatalf("MySQL connection error: %v", err)
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true&charset=utf8mb4&loc=Local",
-		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLDatabase)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4&loc=Local",
+		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLPort, cfg.MySQLDatabase)
 
 	database, err := sqlx.Connect("mysql", dsn)
 	if err != nil {
@@ -34,8 +34,8 @@ func ensureDatabase(cfg config.Config) error {
 	if !validDBName(cfg.MySQLDatabase) {
 		return fmt.Errorf("invalid MYSQL_DATABASE name: %q", cfg.MySQLDatabase)
 	}
-	adminDSN := fmt.Sprintf("%s:%s@tcp(%s:3306)/?parseTime=true&charset=utf8mb4&loc=Local",
-		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost)
+	adminDSN := fmt.Sprintf("%s:%s@tcp(%s:%s)/?parseTime=true&charset=utf8mb4&loc=Local",
+		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLPort)
 	conn, err := sqlx.Connect("mysql", adminDSN)
 	if err != nil {
 		return err

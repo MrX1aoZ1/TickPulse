@@ -6,7 +6,7 @@
 |---|---|
 | 前端 | http://localhost:3001 |
 | API | http://localhost:3000 |
-| MySQL | localhost:3306，库名 `tickpulse_db` |
+| MySQL | Docker 容器映射到 localhost:3306，库名 `tickpulse_db` |
 
 前端和后端必须**同时**开着。两个后端都监听 3000，不要一起启动。
 
@@ -14,7 +14,7 @@
 
 - Node.js（建议 18+）
 - Go 1.23+
-- MySQL 8+（本机服务已启动）
+- Docker Desktop（只需跑 MySQL；`docker run hello-world` 能成功即可）
 - 两个终端窗口（一个后端、一个前端）
 
 ## 1. 安装依赖
@@ -32,10 +32,11 @@ Go 模块会在第一次 `go run` / `go test` 时自动下载。
 
 ## 2. 配置 MySQL 和 `.env`
 
-后端读的是 `backend/.env`（Go 也会沿用这份文件）。至少包含：
+Go 后端只读 `backend-go/.env`。可从 `backend-go/.env.example` 复制一份。至少包含：
 
 ```env
 MYSQL_HOST=localhost
+MYSQL_PORT=3306
 MYSQL_USER=root
 MYSQL_PASSWORD=你的MySQL密码
 MYSQL_DATABASE=tickpulse_db
@@ -45,9 +46,30 @@ ACCESS_TOKEN_SECRET=任意一串密钥
 CLIENT_URL=http://localhost:3001
 ```
 
-Google 登录可选；不填也不影响邮箱密码登录。
+Google 登录可选；不填也不影响邮箱密码登录。`MYSQL_PASSWORD` 会同时用作 Docker MySQL 的 root 密码。
 
-新装的 MySQL 里如果还没有库，Go 后端启动时会自动执行 `CREATE DATABASE IF NOT EXISTS tickpulse_db` 并建表。也可以自己执行：
+在 `backend-go` 目录启动数据库容器（Compose 会自动读同目录的 `.env`）：
+
+```powershell
+cd F:\CSCI3100_Project\tickpulse\backend-go
+docker compose up -d
+```
+
+第一次会拉取 `mysql:8.0` 镜像。等容器 healthy 后再开后端。查看状态：
+
+```powershell
+docker compose ps
+```
+
+停止容器（数据仍在 volume 里）：
+
+```powershell
+docker compose down
+```
+
+如果本机已经有 MySQL 占用 3306（例如 Windows 服务 `MySQL267`），把 `backend-go/.env` 里的 `MYSQL_PORT` 改成 `3307`。Compose 会映射 `3307:3306`，Go 后端也会连 3307。当前推荐这样和本机 MySQL 并存。
+
+Go 后端启动时会自动执行 `CREATE DATABASE IF NOT EXISTS tickpulse_db` 并建表。也可以自己执行：
 
 ```sql
 CREATE DATABASE IF NOT EXISTS tickpulse_db
@@ -169,10 +191,13 @@ node initial_api_test.js
 ## 常见问题
 
 **`Error 1049 Unknown database 'tickpulse_db'`**  
-MySQL 已装但库不存在。更新后的 Go 后端会自动建库；若仍报错，确认 `.env` 里的库名，并检查 MySQL 服务是否在跑。
+容器已起但库还不存在。更新后的 Go 后端会自动建库；若仍报错，确认 `backend-go/.env` 里的库名，并在 `backend-go` 下检查 `docker compose ps` 是否为 healthy。
 
 **`Error 1045 Access denied`**  
-`MYSQL_USER` / `MYSQL_PASSWORD` 和本机 MySQL 不一致。
+`MYSQL_USER` / `MYSQL_PASSWORD` 和 Docker MySQL 不一致。请在 `backend-go` 目录用 `docker compose up -d`，保证密码来自同一份 `backend-go/.env`。
+
+**`Bind for 0.0.0.0:3306 failed: port is already allocated`**  
+3306 被本机 MySQL 或其他进程占用。停掉本机 MySQL，或把 `MYSQL_PORT` 改成空闲端口（如 3307）。
 
 **前端能开但登录失败 / CORS**  
 确认前端是 3001、后端是 3000，且没有两个后端抢同一个端口。

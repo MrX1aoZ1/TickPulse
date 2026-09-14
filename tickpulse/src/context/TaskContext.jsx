@@ -156,8 +156,6 @@ async function fetchWithAuth(endpoint, options = {}) {
       credentials: 'include',
     });
 
-    console.log(response);
-
     if (response.status === 401 || response.status === 403) {
       throw new Error('UNAUTHORIZED');
     }
