@@ -4,6 +4,14 @@ import { useEffect, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 import {
+  applyFilteredOrderToAllTasks,
+  getMovingKeys,
+  getReorderPayload,
+  moveSelectedBlock,
+  taskKey,
+  taskOrderSignature,
+} from '@/lib/taskListReorder';
+import {
   PlusIcon,
   TrashIcon,
   NoSymbolIcon,
@@ -32,8 +40,6 @@ export default function TaskList() {
   const [editHeaderName, setEditHeaderName] = useState('');
   const [draggingId, setDraggingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
-
-  const taskKey = (t) => String(t?.id || t?.taskId || '');
 
   // 輔助函式：日期格式化
   const formatToLocalDateStr = (dateInput) => {
@@ -123,19 +129,6 @@ export default function TaskList() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
-  const moveSelectedBlock = (list, movingKeys, sourceIndex, destIndex) => {
-    const moving = new Set(movingKeys);
-    const block = list.filter((t) => moving.has(taskKey(t)));
-    const without = list.filter((t) => !moving.has(taskKey(t)));
-    const insertAt = destIndex > sourceIndex
-      ? list.slice(0, destIndex + 1).filter((t) => !moving.has(taskKey(t))).length
-      : list.slice(0, destIndex).filter((t) => !moving.has(taskKey(t))).length;
-    const next = [...without];
-    next.splice(insertAt, 0, ...block);
-    return next;
-  };
-
   const onDragStart = (start) => {
     setDraggingId(start.draggableId);
   };
@@ -145,47 +138,31 @@ export default function TaskList() {
     const { destination, source, draggableId } = result;
     if (!destination) return;
 
-    const movingKeys = selectedIds.includes(draggableId) && selectedIds.length > 1
-      ? filteredTasks.filter((t) => selectedIds.includes(taskKey(t))).map(taskKey)
-      : [draggableId];
+    // CONTRACT: hello-pangea 的 source.index / destination.index 現在剛好等於
+    // filteredTasks 的 dataIndex，只因為每一列都有掛 DOM。虛擬化之後它們會變成
+    // window index，不得再當真實位置。階段 3 改用 overId → findDataIndex。
+    const sourceIndex = source.index;
+    const destIndex = destination.index;
 
-    if (movingKeys.length === 1 && destination.index === source.index) return;
+    const movingKeys = getMovingKeys(filteredTasks, selectedIds, draggableId);
+    if (movingKeys.length === 1 && destIndex === sourceIndex) return;
 
     const previous = tasks;
     const reorderedFiltered = moveSelectedBlock(
       filteredTasks,
       movingKeys,
-      source.index,
-      destination.index,
+      sourceIndex,
+      destIndex,
     );
-    const beforeIds = filteredTasks.map(taskKey).join(',');
-    const afterIds = reorderedFiltered.map(taskKey).join(',');
-    if (beforeIds === afterIds) return;
+    if (taskOrderSignature(filteredTasks) === taskOrderSignature(reorderedFiltered)) return;
 
-    const movingSet = new Set(movingKeys);
-    const globalIndices = filteredTasks.map((ft) =>
-      tasks.findIndex((t) => taskKey(t) === taskKey(ft))
-    );
-    const updatedAllTasks = [...tasks];
-    globalIndices.forEach((globalIdx, i) => {
-      if (globalIdx !== -1) {
-        updatedAllTasks[globalIdx] = reorderedFiltered[i];
-      }
+    dispatch({
+      type: 'SET_TASKS',
+      payload: applyFilteredOrderToAllTasks(tasks, filteredTasks, reorderedFiltered),
     });
-    dispatch({ type: 'SET_TASKS', payload: updatedAllTasks });
-
-    const block = reorderedFiltered.filter((t) => movingSet.has(taskKey(t)));
-    const firstIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[0]));
-    const lastIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[block.length - 1]));
-    const prevTask = firstIdx > 0 ? reorderedFiltered[firstIdx - 1] : null;
-    const nextTask = lastIdx < reorderedFiltered.length - 1 ? reorderedFiltered[lastIdx + 1] : null;
 
     try {
-      await taskApi.updateTasksOrder({
-        ids: block.map(taskKey),
-        prev_id: prevTask ? taskKey(prevTask) : null,
-        next_id: nextTask ? taskKey(nextTask) : null,
-      });
+      await taskApi.updateTasksOrder(getReorderPayload(reorderedFiltered, movingKeys));
     } catch (error) {
       console.error('Failed to update task order:', error);
       showError('Failed to save task order');
