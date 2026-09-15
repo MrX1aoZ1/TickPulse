@@ -3,7 +3,7 @@ const router = express.Router();
 const passport = require('passport');
 const bcrypt = require('bcrypt');
 const licenses = require('../licenseKey');
-const { generateAccessToken, generateRefreshToken, handleLogout } = require('../utils/authUtils');
+const { handleLogout } = require('../utils/authUtils');
 const { sendResponse } = require('../utils/response');
 const { getUserByEmail, getUserById, getUserByProvider, createUserAccount } = require('../services/userServices');
 
@@ -13,15 +13,30 @@ const connectDB = require('../config/db');
 const initializePassport = require('../passport-config');
 initializePassport(passport);
 
-// @desc    User Sign-Up
-// @route   POST /auth/sign-up
-// @access  Private
+/**
+ * @desc    Check Current Auth Status
+ * @route   GET /auth/check
+ */
+const checkAuthStatus = (req, res) => {
+    if (req.isAuthenticated() && req.user) {
+        return res.status(200).json({
+            authenticated: true,
+            user: { id: req.user.id, email: req.user.email, user: req.user.username }
+        });
+    }
+    return res.status(401).json({ authenticated: false, message: 'Not authenticated' });
+};
+
+/**
+ * @desc    User Sign-Up
+ * @route   POST /auth/sign-up
+ */
 const signUp = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const existingUsers = await getUserByEmail(email);
-        if (existingUsers) {
+        const existingUser = await getUserByEmail(email);
+        if (existingUser) {
             return sendResponse.error(res, 'Email already exists', 400);
         }
 
@@ -41,14 +56,15 @@ const signUp = async (req, res) => {
             user: { id: newUser.id, email: newUser.email }
         });
     } catch (error) {
-        console.error("Sign-Up Error:", error);
-        sendResponse.error(res, 'Server Error, Please Try Again Later', 500);
+        console.error('Sign-up error:', error);
+        return sendResponse.error(res, 'Server error during sign-up', 500);
     }
 };
 
-// @desc    User Login
-// @route   POST /auth/login 
-// @access  Private
+/**
+ * @desc    User Login (純 Session Cookie 版本)
+ * @route   POST /auth/login
+ */
 const login = async (req, res, next) => {
     passport.authenticate('local', (err, user, info) => {
         if (err) {
@@ -56,31 +72,23 @@ const login = async (req, res, next) => {
             return sendResponse.error(res, 'Server Error', 500);
         }
         if (!user) {
+            // 對齊你原有的狀態碼邏輯
             const statusCode = info.message === 'Email not registered' ? 401 : 402;
             return sendResponse.error(res, info.message, statusCode);
         }
 
-        req.login(user, async (err) => {
-            if (err) {
-                console.error('Session Error:', err);
+        // 🎯 核心：建立 Passport + Express 的正式 Session
+        req.login(user, (loginErr) => {
+            if (loginErr) {
+                console.error('Session Error:', loginErr);
                 return sendResponse.error(res, 'Session initialization failed', 500);
             }
 
-            try {
-                // Generate Token
-                const accessToken = generateAccessToken(user).token;
-                const refreshToken = generateRefreshToken(user.id);
-
-                // Return response
-                sendResponse.success(res, {
-                    user: { id: user.id, email: user.email },
-                    accessToken,
-                    refreshToken
-                });
-            } catch (error) {
-                console.error('Error in generating token:', error);
-                sendResponse.error(res, 'Login Failed', 500);
-            }
+            // 🎉 成功！Express 會自動在 Response Header 附上 Set-Cookie: connect.sid=...
+            return sendResponse.success(res, {
+                message: "Login successful",
+                user: { id: user.id, email: user.email }
+            });
         });
     })(req, res, next);
 };
@@ -145,6 +153,7 @@ const googleCallback = (req, res, next) => {
 const logout = handleLogout;
 
 module.exports = {
+    checkAuthStatus,
     signUp,
     login,
     googleLogin,

@@ -7,10 +7,18 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
 async function seedDatabase() {
-    const userId = 8; // 對應你 mock 的測試帳號
-    const categoryId = 'inbox';
-    const totalTasks = 100000;
+    const userId = 18; // 對應你 mock 的測試帳號
+    const categoryId = 'inbox_18';
+    const totalTasks = 10000;
     const batchSize = 1000; // 每次批次寫入 1000 筆，避免記憶體溢出
+
+    const getRandomStatus = () => {
+        const rand = Math.random();
+        if (rand < 0.6) return 'pending';    // 60% 機率是待辦
+        if (rand < 0.8) return 'completed';  // 20% 機率是完成
+        if (rand < 0.9) return 'cancelled';  // 10% 機率是取消
+        return 'deleted';                    // 10% 機率是刪除
+    };
 
     console.log(`🔥 開始對資料庫進行壓測播種，目標：${totalTasks} 筆任務...`);
     console.time('SeedingTime'); // 計時開始
@@ -19,7 +27,7 @@ async function seedDatabase() {
 
     try {
         connection = await connectDB();
-        
+
 
         // Create User 
         // await connection.beginTransaction();
@@ -51,15 +59,15 @@ async function seedDatabase() {
 
         for (let i = 0; i < totalTasks; i += batchSize) {
             const values = [];
-            
+
             // 2. 產生 1000 筆假資料
             for (let j = 0; j < batchSize; j++) {
                 const id = crypto.randomUUID();
                 const taskName = `壓力測試任務 #${i + j + 1}`;
                 // 因為你最終版資料庫使用 ENUM，所以這裡直接塞字串
-                const status = Math.random() > 0.8 ? 'completed' : 'pending'; 
+                const status = getRandomStatus();
                 const sortOrder = Math.random() * 100000; // 隨機浮點數排序
-                
+
                 // 陣列順序必須對應下方 INSERT 語句的欄位
                 values.push([id, categoryId, userId, taskName, status, sortOrder]);
             }
@@ -69,7 +77,7 @@ async function seedDatabase() {
                 `INSERT INTO tasks (id, category_id, user_id, task_name, status, sort_order) VALUES ?`,
                 [values]
             );
-            
+
             console.log(`...已寫入 ${i + batchSize} 筆資料`);
         }
 

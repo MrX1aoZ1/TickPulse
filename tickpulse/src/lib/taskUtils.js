@@ -36,7 +36,7 @@ export const filterTasks = (tasks, category) => {
       case 'all':
         return 'All Tasks';
       case 'today':
-        return 'Today’s Tasks';
+        return `Today's Tasks`;
       case 'completed':
         return 'Completed Tasks';
       case 'abandoned':

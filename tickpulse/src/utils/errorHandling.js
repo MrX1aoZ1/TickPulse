@@ -14,10 +14,6 @@ export const errorMessages = {
   'tasks/not-found': 'The requested task could not be found',
   'tasks/invalid-data': 'Invalid task data provided',
   
-  // Project errors (Consider if this should be 'categories' based on other files)
-  'projects/not-found': 'The requested project could not be found',
-  'projects/invalid-data': 'Invalid project data provided',
-  
   // Generic errors
   'network-error': 'Network connection error. Please check your internet connection',
   'server-error': 'Server error. Please try again later',

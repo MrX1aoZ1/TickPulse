@@ -1,26 +1,31 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useTasks } from '@/context/TaskContext';
-import { taskApi } from '@/context/TaskContext';
+import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
-import { PlusIcon, PencilIcon, TrashIcon, FolderIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon, PencilIcon, TrashIcon,
+  CalendarIcon, RectangleStackIcon,
+  Bars3Icon, CheckCircleIcon, XCircleIcon,
+  ClockIcon
+} from '@heroicons/react/24/outline';
+// 🎯 引入現代版 react-beautiful-dnd 拖曳組件
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-// For frontend dev use
-const mockCategories = [
-  { id: 'inbox', name: 'Inbox' },
-  { id: '1', name: '💼 工作项目' },
-  { id: '2', name: '🏡 生活 Tab' },
-  { id: '3', name: '🤖 Gym 健身打卡' }
+const smartFilters = [
+  { id: 'all', name: 'All Tasks', icon: RectangleStackIcon },
+  { id: 'today', name: 'Today\'s Tasks', icon: CalendarIcon },
+  { id: 'next7', name: 'Next 7 Days', icon: ClockIcon },
 ];
 
-/**
- * @component CategoryList
- * @description Component for displaying and managing task categories.
- * Allows users to view, add, edit, delete, and select categories.
- */
+const statusFilters = [
+  { id: 'completed', name: 'Completed', icon: CheckCircleIcon },
+  { id: 'cancelled', name: 'Won\'t Do', icon: XCircleIcon },
+  { id: 'deleted', name: 'Trash', icon: TrashIcon }
+];
+
 export default function CategoryList() {
-  const { categories = [], dispatch, selectedCategoryId, selectedView } = useTasks();
+  const { categories = [], dispatch, selectedCategoryId, selectedView, activeFilter } = useTasks();
   const { showSuccess, showError } = useToast();
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
@@ -28,308 +33,281 @@ export default function CategoryList() {
   const [editName, setEditName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-
-  // For frontend dev use
-  const [localDbCategories, setLocalDbCategories] = useState(mockCategories);
-
   useEffect(() => {
-    fetchCategories();
-    // eslint-disable-next-line
-  }, [localDbCategories]);
-
-  /**
-   * @function fetchCategories
-   * @description Fetches all categories from the API and updates the state.
-   * Transforms fetched categories and ensures 'Inbox' category is present.
-   */
-  const fetchCategories = async () => {
-    try {
+    const fetchCategories = async () => {
       setIsLoading(true);
+      try {
+        const fetched = await taskApi.getAllCategories();
+        if (Array.isArray(fetched)) {
+          const transformed = fetched.map(cat => ({
+            id: cat.id || cat.category_id,
+            name: cat.category_name || cat.name,
+            // 🎯 修正：絕對不要給 'a'，要給官方庫的預設標準起點
+            sort_order: cat.sort_order ? String(cat.sort_order) : '0|0i0000:'
+          }));
 
-      // For dev use
-      if (process.env.NODE_ENV === 'development') {
-        dispatch({
-          type: 'SET_CATEGORIES',
-          payload: localDbCategories
-        });
-        return; // Stop execution if in dev mode
-      }
-      
-      const fetchedCategories = await taskApi.getAllCategories();
-      if (Array.isArray(fetchedCategories)) {
-        const transformedCategories = fetchedCategories.map(cat => ({
-          id: cat.category_id ? cat.category_id.toString() : `temp-${Math.random()}`,
-          name: cat.category_name || 'Unnamed Category'
-        }));
-        if (!transformedCategories.find(c => c.id === 'inbox')) {
-          transformedCategories.unshift({ id: 'inbox', name: 'Inbox' });
+          // 使用原生字串比對函數 localeCompare 排序
+          transformed.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
+
+          dispatch({ type: 'SET_CATEGORIES', payload: transformed });
         }
-        dispatch({
-          type: 'SET_CATEGORIES',
-          payload: transformedCategories
-        });
+      } catch (error) {
+        console.error('Failed to load categories:', error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      // If no categories exist yet, just use the default Inbox
-      dispatch({
-        type: 'SET_CATEGORIES',
-        payload: [{ id: 'inbox', name: 'Inbox' }]
-      });
-      showError('Failed to fetch categories');
-    } finally {
-      setIsLoading(false);
+    };
+    
+    // 如果全域已經有資料了，可以減少一次重複發送 API
+    if (categories.length === 0) {
+      fetchCategories();
     }
+  }, [dispatch, categories.length]);
+
+  const handleSelectFilter = (filterId) => {
+    dispatch({ type: 'SET_VIEW', payload: 'filter' });
+    dispatch({ type: 'SET_FILTER', payload: filterId });
   };
 
-  /**
-   * @function handleSelectCategory
-   * @description Handles the selection of a category.
-   * Updates the selected category and view in the global state.
-   * @param {string} categoryId - The ID of the category to select.
-   */
-  const handleSelectCategory = (categoryId) => {
-    dispatch({ type: 'SELECT_CATEGORY', payload: categoryId });
+  const handleSelectCategory = (id) => {
     dispatch({ type: 'SET_VIEW', payload: 'category' });
+    dispatch({ type: 'SELECT_CATEGORY', payload: id });
   };
 
-  /**
-   * @function handleAddCategory
-   * @description Handles the creation of a new category.
-   * Sends a request to the API and updates the local state upon success.
-   */
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) return;
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+
     try {
-      setIsLoading(true);
+      const response = await taskApi.createCategory(trimmed);
 
-      // For frontend dev use
-      if (process.env.NODE_ENV === 'development') {
-        // 模拟后端生成自增 ID 并存入“数据库”
-        const newCat = {
-          id: String(Date.now()),
-          name: newCategoryName.trim()
-        };
-        setLocalDbCategories([...localDbCategories, newCat]);
-        
-        setNewCategoryName('');
-        setIsAdding(false);
-        showSuccess('Category created successfully (Dev Mode)');
-        return; //Stop execution if in dev mode
-      }
+      const newCat = {
+        id: response?.id || response?.category_id || `temp_${Date.now()}`,
+        name: response?.category_name || response?.name || trimmed,
+        sort_order: response?.sort_order ? String(response.sort_order) : '0|0i0000:',
+      };
 
-      const response = await taskApi.createCategory(newCategoryName.trim());
-      if (response && response.category_id) {
-        dispatch({
-          type: 'ADD_CATEGORY',
-          payload: {
-            id: response.category_id.toString(),
-            name: newCategoryName.trim()
-          }
-        });
-      } else {
-        dispatch({
-          type: 'ADD_CATEGORY',
-          payload: {
-            id: newCategoryName.trim(),
-            name: newCategoryName.trim()
-          }
-        });
-      }
+      // 4. 發送給 Reducer，這時內建的 localeCompare 就會自動把它排到最後面
+      dispatch({ type: 'ADD_CATEGORY', payload: newCat });
+      
+      // 5. 清空輸入框與關閉狀態
       setNewCategoryName('');
       setIsAdding(false);
-      showSuccess('Category created successfully');
-      fetchCategories();
+      showSuccess('List created successfully');
     } catch (error) {
-      showError('Failed to create category');
-    } finally {
-      setIsLoading(false);
+      console.error('前端解析後端新增資料時發生錯誤:', error);
+      showError('Failed to create list');
     }
   };
 
-  /**
-   * @function handleDeleteCategory
-   * @description Handles the deletion of a category.
-   * Prevents deletion of the 'Inbox' category.
-   * Prompts for confirmation before deleting.
-   * @param {Event} e - The event object.
-   * @param {string} categoryId - The ID of the category to delete.
-   */
-  const handleDeleteCategory = async (e, categoryId) => {
+  const handleDeleteCategory = async (e, id) => {
     e.stopPropagation();
-    if (categoryId === 'inbox') {
-      showError('Cannot delete the default Inbox category');
-      return;
-    }
-    if (window.confirm(`Are you sure you want to delete this category? Tasks will be moved to Inbox.`)) {
+    if (id && id.toString().startsWith('inbox_')) return;
+    if (confirm('Are you sure you want to delete this list?')) {
       try {
-        if (process.env.NODE_ENV === 'development') {
-          // Delete from localDbCategories if in dev mode
-          setLocalDbCategories(localDbCategories.filter(cat => cat.id !== categoryId));
-          showSuccess('Category deleted successfully (Dev Mode)');
-          return; // Stop execution if in dev mode
-        }
-
-        dispatch({ type: 'DELETE_CATEGORY', payload: categoryId });
-        showSuccess('Category deleted successfully');
+        await taskApi.deleteCategory(id);
+        dispatch({ type: 'DELETE_CATEGORY', payload: id });
+        showSuccess('List deleted');
       } catch (error) {
-        showError('Failed to delete category');
+        showError('Failed to delete list');
       }
     }
   };
 
-  /**
-   * @function handleStartEdit
-   * @description Initiates the editing mode for a category.
-   * Prevents editing of the 'Inbox' category.
-   * @param {Event} e - The event object.
-   * @param {string} categoryId - The ID of the category to edit.
-   * @param {string} name - The current name of the category.
-   */
-  const handleStartEdit = (e, categoryId, name) => {
-    e.stopPropagation();
-    if (categoryId === 'inbox') {
-      showError('Cannot edit the default Inbox category');
-      return;
-    }
-    setEditingId(categoryId);
-    setEditName(name);
-  };
-
-  /**
-   * @function handleSaveEdit
-   * @description Saves the edited category name.
-   * Updates the category name in the local state.
-   * @param {Event} e - The event object.
-   */
   const handleSaveEdit = async (e) => {
-    e.stopPropagation();
-    if (!editName.trim() || !editingId) return;
+    if (e) e.preventDefault();
+    const trimmed = editName.trim();
+    if (!trimmed) return;
     try {
-      setIsLoading(true);
-
-      // For frontend dev use  
-      if (process.env.NODE_ENV === 'development') {
-        // 更新本地“数据库”对应的分类名字
-        setLocalDbCategories(
-          localDbCategories.map(cat => 
-            cat.id === editingId ? { ...cat, name: editName.trim() } : cat
-          )
-        );
-        setEditingId(null);
-        setEditName('');
-        showSuccess('Category renamed successfully (Dev Mode)');
-        return; // Stop execution if in dev mode
-      }
-
-      dispatch({
-        type: 'RENAME_CATEGORY',
-        payload: {
-          categoryId: editingId,
-          newName: editName.trim()
-        }
-      });
+      await taskApi.updateCategory(editingId, trimmed);
+      dispatch({ type: 'RENAME_CATEGORY', payload: { categoryId: editingId, newName: trimmed } });
       setEditingId(null);
-      setEditName('');
-      showSuccess('Category renamed successfully');
+      showSuccess('List renamed');
     } catch (error) {
-      showError('Failed to rename category');
-    } finally {
-      setIsLoading(false);
+      showError('Failed to rename list');
     }
   };
 
-  /**
-   * @function handleCancelEdit
-   * @description Cancels the category editing mode.
-   * @param {Event} e - The event object.
-   */
-  const handleCancelEdit = (e) => {
-    e.stopPropagation();
-    setEditingId(null);
-    setEditName('');
+  // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
+  const onDragEnd = async (result) => {
+    const { destination, source, draggableId } = result;
+
+    if (!destination || destination.index === source.index) return;
+
+    const previous = categories;
+    const reorderedCategories = Array.from(categories);
+    const [removed] = reorderedCategories.splice(source.index, 1);
+    reorderedCategories.splice(destination.index, 0, removed);
+
+    const idx = destination.index;
+    const prevCategory = reorderedCategories[idx - 1] || null;
+    const nextCategory = reorderedCategories[idx + 1] || null;
+
+    dispatch({
+      type: 'SET_CATEGORIES',
+      payload: reorderedCategories,
+    });
+
+    try {
+      await taskApi.updateCategoryOrder(draggableId, {
+        prev_id: prevCategory?.id ?? null,
+        next_id: nextCategory?.id ?? null,
+      });
+    } catch (error) {
+      console.error('Failed to update order in backend:', error);
+      showError('Failed to save order');
+      dispatch({ type: 'SET_CATEGORIES', payload: previous });
+    }
   };
 
   return (
-    <div className="p-4">
-      <div className="flex items-center mb-2">
-        <span className="font-semibold text-gray-700 dark:text-gray-300">Categories</span>
-        <button
-          className="ml-auto text-blue-500 hover:text-blue-700"
-          onClick={() => setIsAdding(true)}
-          title="Add Category"
-        >
-          <PlusIcon className="h-5 w-5" />
-        </button>
+    <div className="w-64 h-full bg-white dark:bg-[#1e1e1e] text-zinc-700 dark:text-zinc-300 flex flex-col py-4 border-r border-zinc-200 dark:border-zinc-800/40 select-none">
+
+      {/* 智能過濾器 */}
+      <div className="space-y-0.5 px-2 mb-6">
+        {smartFilters.map((filter) => {
+          const isActive = selectedView === 'filter' && activeFilter === filter.id;
+          return (
+            <button
+              key={filter.id}
+              onClick={() => handleSelectFilter(filter.id)}
+              className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
+                ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
+                }`}
+            >
+              <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />
+              {filter.name}
+            </button>
+          );
+        })}
       </div>
-      {isAdding && (
-        <div className="flex items-center mb-2">
-          <input
-            type="text"
-            value={newCategoryName}
-            onChange={e => setNewCategoryName(e.target.value)}
-            className="flex-1 border rounded px-2 py-1 text-sm"
-            placeholder="New category name"
-            autoFocus
-          />
-          <button
-            className="ml-2 text-green-500"
-            onClick={handleAddCategory}
-            disabled={isLoading}
-          >
-            Add
-          </button>
-          <button
-            className="ml-1 text-gray-400"
-            onClick={() => setIsAdding(false)}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-      <ul className="space-y-2">
-        {(Array.isArray(categories) ? categories : []).map(category => (
-          <li
-            key={category.id}
-            onClick={() => handleSelectCategory(category.id)}
-            className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer group ${
-              selectedView === 'category' && selectedCategoryId === category.id
-                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-800'
-            }`}
-          >
-            <div className="flex items-center">
-              <FolderIcon className="h-5 w-5 mr-2" />
-              {editingId === category.id ? (
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  onClick={e => e.stopPropagation()}
-                  className="bg-white dark:bg-zinc-700 border border-gray-300 dark:border-zinc-600 rounded px-2 py-1 text-sm"
-                  autoFocus
-                  onBlur={handleSaveEdit}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleSaveEdit(e);
-                    if (e.key === 'Escape') handleCancelEdit(e);
-                  }}
-                />
-              ) : (
-                <span>{category.name}</span>
+
+      <div className="flex-1 overflow-y-auto px-2 space-y-6">
+        {/* 自訂分類區 (Lists) */}
+        <div>
+          <div className="px-3 mb-2 flex items-center justify-between text-xs font-bold text-zinc-400 dark:text-zinc-600 tracking-wider uppercase">
+            <span>Lists</span>
+            <button onClick={() => setIsAdding(!isAdding)} className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300">
+              <PlusIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {isAdding && (
+            <form onSubmit={handleAddCategory} className="px-2 mb-2">
+              <input
+                type="text"
+                placeholder="New list..."
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-800 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                autoFocus
+              />
+            </form>
+          )}
+
+          {/* 🎯 DragDropContext 拖曳控制包裝層 */}
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="categories-droppable" type="CATEGORY">
+              {(provided) => (
+                <div
+                  className="space-y-0.5"
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                >
+                  {categories.map((category, index) => {
+                    const isSelected = selectedView === 'category' && selectedCategoryId === category.id;
+
+                    return (
+                      <Draggable
+                        key={category.id}
+                        draggableId={category.id.toString()}
+                        index={index}
+                      >
+                        {(dragProvided, snapshot) => (
+                          <div
+                            ref={dragProvided.innerRef}
+                            {...dragProvided.draggableProps}
+                            {...dragProvided.dragHandleProps}
+                            onClick={() => handleSelectCategory(category.id)}
+                            className={`group flex items-center justify-between px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${isSelected ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
+                              } ${snapshot.isDragging ? 'bg-zinc-100 shadow-lg border border-zinc-200 dark:bg-zinc-800/80 dark:border-zinc-700/40' : ''}`}
+                            style={{ ...dragProvided.draggableProps.style }}
+                          >
+                            <div className="flex items-center min-w-0 flex-1">
+                              <Bars3Icon className="h-4 w-4 mr-3 text-zinc-500 group-hover:text-zinc-400 flex-shrink-0" />
+                              {editingId === category.id ? (
+                                <input
+                                  type="text"
+                                  value={editName}
+                                  onChange={e => setEditName(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="bg-white dark:bg-zinc-700 text-zinc-800 dark:text-white border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-0.5 text-xs w-32 focus:outline-none"
+                                  autoFocus
+                                  onBlur={handleSaveEdit}
+                                  onKeyDown={e => e.key === 'Enter' && handleSaveEdit(e)}
+                                />
+                              ) : (
+                                <span className="truncate">{category.name}</span>
+                              )}
+                            </div>
+
+                            {category?.id && !category.id.toString().startsWith('inbox_') && (
+                              <div className="hidden group-hover:flex items-center space-x-1 flex-shrink-0">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingId(category.id);
+                                    setEditName(category.name);
+                                  }}
+                                  className="text-zinc-500 hover:text-blue-400 p-0.5"
+                                >
+                                  <PencilIcon className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteCategory(e, category.id)}
+                                  className="text-zinc-500 hover:text-red-400 p-0.5"
+                                >
+                                  <TrashIcon className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </Draggable>
+                    );
+                  })}
+                  {provided.placeholder}
+                </div>
               )}
-            </div>
-            <div className="flex-shrink-0 space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={e => handleStartEdit(e, category.id, category.name)} className="text-gray-400 hover:text-blue-500">
-                <PencilIcon className="h-4 w-4" />
-              </button>
-              <button onClick={e => handleDeleteCategory(e, category.id)} className="text-gray-400 hover:text-red-500">
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+            </Droppable>
+          </DragDropContext>
+        </div>
+
+        {/* 狀態過濾區 */}
+        <div className="border-t border-zinc-200 dark:border-zinc-800/40 pt-4">
+          <div className="space-y-0.5">
+            {statusFilters.map((filter) => {
+              const isActive = selectedView === 'filter' && activeFilter === filter.id;
+              return (
+                <button
+                  key={filter.id}
+                  onClick={() => handleSelectFilter(filter.id)}
+                  className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${isActive
+                    ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
+                    }`}
+                >
+                  <filter.icon className={`h-4 w-4 mr-3 ${isActive ? 'text-blue-400' : 'text-zinc-500'}`} />
+                  {filter.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
- 

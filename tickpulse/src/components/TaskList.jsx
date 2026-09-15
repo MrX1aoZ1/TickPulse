@@ -1,297 +1,471 @@
 'use client';
 
-import { useTasks } from '@/context/TaskContext';
-import { CheckIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { useState, useEffect } from 'react';
-import { taskApi } from '@/context/TaskContext'; // Import taskApi
-import { useToast } from '@/context/ToastContext'; // Import useToast
+import { useEffect, useState } from 'react';
+import { useTasks, taskApi } from '@/context/TaskContext';
+import { useToast } from '@/context/ToastContext';
+import {
+  PlusIcon,
+  TrashIcon,
+  NoSymbolIcon,
+  ArrowUturnLeftIcon,
+  PencilIcon,
+  Bars3Icon // 🎯 漢堡選單圖標，作為 Draggable 的拖曳把手
+} from '@heroicons/react/24/outline';
+// 🎯 引入與 CategoryList 相同的拖曳組件
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-// For frontend dev use
-const mockTasks = [
-  {
-    id: 'task-1',
-    task_name: '🚀 將 TickPulse 前端組件進行分類重構',
-    status: 'pending',
-    priority: 'high',
-    category_name: '1',
-    deadline: new Date().toISOString().split('T')[0] // Due Today
-  },
-  {
-    id: 'task-2',
-    task_name: '📝 補全 TaskItem 的 TypeScript 接口定義',
-    status: 'pending',
-    priority: 'medium',
-    category_name: '1',
-    deadline: ''
-  },
-  {
-    id: 'task-3',
-    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
-    status: 'completed',
-    priority: 'low',
-    category_name: '3',
-    deadline: new Date().toISOString().split('T')[0]
-  },
-  {
-    id: 'task-4',
-    task_name: '🤖 去 Gym 訓練 1 小時 (練腿日)',
-    status: 'completed',
-    priority: 'low',
-    category_name: '3',
-    deadline: new Date().toISOString().split('T')[0]
-  }
-];
-
-/**
- * @component TaskList
- * @description Component for displaying a list of tasks.
- * Filters and sorts tasks based on the selected view (category or filter).
- * Allows users to select, complete, and delete tasks.
- */
 export default function TaskList() {
   const {
     tasks = [],
+    categories = [],
     dispatch,
-    selectedTaskId,
     selectedView,
+    selectedCategoryId,
     activeFilter,
-    selectedCategoryId, // Changed from selectedProjectId
-    categories // Changed from projects
+    selectedTaskId
   } = useTasks();
+  const { showSuccess, showError } = useToast();
 
-  const { showSuccess, showError } = useToast(); // Add useToast hook
-  const [filteredTasks, setFilteredTasks] = useState([]);
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [editHeaderName, setEditHeaderName] = useState('');
+  const [draggingId, setDraggingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
 
+  const taskKey = (t) => String(t?.id || t?.taskId || '');
 
-  // For frontend dev use
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && tasks.length === 0) {
-      dispatch({
-        type: 'SET_TASKS',
-        payload: mockTasks
-      });
-    }
-  }, [dispatch, tasks.length]);
-
-  /**
-   * @function getViewTitle
-   * @description Gets the title for the current view (e.g., category name or filter name).
-   * @returns {string} The title for the current view.
-   */
-  const getViewTitle = () => {
-    if (selectedView === 'category') { // Changed from 'project'
-      const category = categories.find(c => c.id === selectedCategoryId); // Changed from project
-      return category ? category.name : 'Tasks';
-    } else if (selectedView === 'filter') {
-      switch (activeFilter) {
-        case 'all': return 'All Tasks'; // Translated from 'All Mission'
-        case 'today': return 'Today\'s Tasks'; // Translated from 'Today Mission'
-        case 'completed': return 'Completed Tasks'; // Translated from 'Finished Mission'
-        default: return 'Tasks';
-      }
-    }
-    return 'Tasks';
+  // 輔助函式：日期格式化
+  const formatToLocalDateStr = (dateInput) => {
+    if (!dateInput) return null;
+    if (typeof dateInput === 'string' && dateInput.length === 10) return dateInput;
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // Filter and sort tasks
-  useEffect(() => {
+  // 動態計算目前 View 的頂端標題
+  const currentCategory = categories.find(cat => cat.id === selectedCategoryId);
+  let headerTitle = '';
+  let isEditable = false;
 
-    // For frontend dev use
-    let result = [...tasks];
-
-    if (selectedView === 'category') {
-      result = result.filter(task => task.category_name === selectedCategoryId);
-    } else if (selectedView === 'filter') {
-      if (activeFilter === 'today') {
-        const today = new Date().toISOString().split('T')[0];
-        result = result.filter(task => task.deadline === today && task.status !== 'completed');
-      } else if (activeFilter === 'completed') {
-        result = result.filter(task => task.status === 'completed');
-      }
+  if (selectedView === 'category' && currentCategory) {
+    headerTitle = currentCategory.name || 'Untitled List';
+    isEditable = !currentCategory.id?.toString().startsWith('inbox_');
+  } else if (selectedView === 'filter') {
+    switch (activeFilter) {
+      case 'all': headerTitle = 'All Tasks'; break;
+      case 'today': headerTitle = "Today's Tasks"; break;
+      case 'next7': headerTitle = 'Next 7 Days'; break;
+      case 'completed': headerTitle = 'Completed'; break;
+      case 'cancelled': headerTitle = "Won't Do"; break;
+      case 'deleted': headerTitle = 'Trash'; break;
+      default: headerTitle = 'Tasks';
     }
-    // Add sorting logic here if needed, based on sortConfig
-    // Example: result.sort((a, b) => { ... });
-    setFilteredTasks(result);
-  }, [tasks, selectedView, selectedCategoryId, activeFilter, sortConfig]); // Changed from selectedProjectId
+  }
 
-  /**
-   * @function handleTaskSelect
-   * @description Handles the selection of a task.
-   * Dispatches an action to update the selected task in the global state.
-   * @param {string} taskId - The ID of the task to select.
-   */
-  const handleTaskSelect = (taskId) => {
-    dispatch({ type: 'SELECT_TASK', payload: taskId });
-  };
-
-  /**
-   * @function handleToggleComplete
-   * @description Toggles the completion status of a task.
-   * Calls the API to update the task status and updates the local state.
-   * @param {Event} e - The event object.
-   * @param {string} taskId - The ID of the task to toggle.
-   */
-  const handleToggleComplete = async (e, taskId) => {
-    e.stopPropagation(); // Prevent task selection when clicking the checkbox
+  // 處理標題重新命名
+  const handleSaveHeaderRename = async () => {
+    const trimmed = editHeaderName.trim();
+    if (!trimmed || trimmed === currentCategory?.name) {
+      setIsEditingHeader(false);
+      return;
+    }
     try {
-      // For frontend dev use
-
-      const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
-
-      const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-
-      if (process.env.NODE_ENV === 'development' ) {
-        // 模擬修改本地數據庫
-        dispatch({ type: 'TOGGLE_TASK', payload: taskId });
-
-        console.log(tasks);
-
-        showSuccess(`${taskId} marked as ${newStatus} (Dev Mode)`);
-
-        return; // Exit without calling API in dev mode
-      }
-
-      // Call API to update task status
-      await taskApi.updateTaskStatus(taskId, newStatus);
-
-      // Update local state
-      dispatch({ type: 'TOGGLE_TASK', payload: taskId });
-      showSuccess(`Task marked as ${newStatus}`);
+      await taskApi.updateCategory(selectedCategoryId, trimmed);
+      dispatch({
+        type: 'RENAME_CATEGORY',
+        payload: { categoryId: selectedCategoryId, newName: trimmed }
+      });
+      showSuccess('List renamed');
     } catch (error) {
-      console.error('Failed to update task status:', error);
+      showError('Failed to rename list');
+    } finally {
+      setIsEditingHeader(false);
+    }
+  };
+
+  // 任務過濾邏輯
+  const filteredTasks = tasks.filter(task => {
+    const taskDateStr = formatToLocalDateStr(task.deadline);
+    if (selectedView === 'category') {
+      return task.category_id === selectedCategoryId && task.status !== 'deleted' && task.status !== 'cancelled';
+    }
+    if (selectedView === 'filter') {
+      switch (activeFilter) {
+        case 'all': return task.status !== 'deleted' && task.status !== 'cancelled' && task.status !== 'completed';
+        case 'today': return taskDateStr === formatToLocalDateStr(new Date()) && task.status !== 'deleted' && task.status !== 'cancelled';
+        case 'next7': {
+          if (!taskDateStr || task.status === 'deleted' || task.status === 'cancelled') return false;
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const sevenDaysLater = new Date(); sevenDaysLater.setDate(today.getDate() + 7);
+          const taskDate = new Date(taskDateStr + 'T00:00:00');
+          return taskDate >= today && taskDate <= sevenDaysLater;
+        }
+        case 'completed': return task.status === 'completed';
+        case 'cancelled': return task.status === 'cancelled';
+        case 'deleted': return task.status === 'deleted';
+        default: return true;
+      }
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [selectedView, selectedCategoryId, activeFilter]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setSelectedIds([]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
+  const moveSelectedBlock = (list, movingKeys, sourceIndex, destIndex) => {
+    const moving = new Set(movingKeys);
+    const block = list.filter((t) => moving.has(taskKey(t)));
+    const without = list.filter((t) => !moving.has(taskKey(t)));
+    const insertAt = destIndex > sourceIndex
+      ? list.slice(0, destIndex + 1).filter((t) => !moving.has(taskKey(t))).length
+      : list.slice(0, destIndex).filter((t) => !moving.has(taskKey(t))).length;
+    const next = [...without];
+    next.splice(insertAt, 0, ...block);
+    return next;
+  };
+
+  const onDragStart = (start) => {
+    setDraggingId(start.draggableId);
+  };
+
+  const onDragEnd = async (result) => {
+    setDraggingId(null);
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+
+    const movingKeys = selectedIds.includes(draggableId) && selectedIds.length > 1
+      ? filteredTasks.filter((t) => selectedIds.includes(taskKey(t))).map(taskKey)
+      : [draggableId];
+
+    if (movingKeys.length === 1 && destination.index === source.index) return;
+
+    const previous = tasks;
+    const reorderedFiltered = moveSelectedBlock(
+      filteredTasks,
+      movingKeys,
+      source.index,
+      destination.index,
+    );
+    const beforeIds = filteredTasks.map(taskKey).join(',');
+    const afterIds = reorderedFiltered.map(taskKey).join(',');
+    if (beforeIds === afterIds) return;
+
+    const movingSet = new Set(movingKeys);
+    const globalIndices = filteredTasks.map((ft) =>
+      tasks.findIndex((t) => taskKey(t) === taskKey(ft))
+    );
+    const updatedAllTasks = [...tasks];
+    globalIndices.forEach((globalIdx, i) => {
+      if (globalIdx !== -1) {
+        updatedAllTasks[globalIdx] = reorderedFiltered[i];
+      }
+    });
+    dispatch({ type: 'SET_TASKS', payload: updatedAllTasks });
+
+    const block = reorderedFiltered.filter((t) => movingSet.has(taskKey(t)));
+    const firstIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[0]));
+    const lastIdx = reorderedFiltered.findIndex((t) => taskKey(t) === taskKey(block[block.length - 1]));
+    const prevTask = firstIdx > 0 ? reorderedFiltered[firstIdx - 1] : null;
+    const nextTask = lastIdx < reorderedFiltered.length - 1 ? reorderedFiltered[lastIdx + 1] : null;
+
+    try {
+      await taskApi.updateTasksOrder({
+        ids: block.map(taskKey),
+        prev_id: prevTask ? taskKey(prevTask) : null,
+        next_id: nextTask ? taskKey(nextTask) : null,
+      });
+    } catch (error) {
+      console.error('Failed to update task order:', error);
+      showError('Failed to save task order');
+      dispatch({ type: 'SET_TASKS', payload: previous });
+    }
+  };
+
+  const handleSelectTask = (e, task, index) => {
+    const id = taskKey(task);
+    if (e.shiftKey) {
+      let anchor = selectedTaskId
+        ? filteredTasks.findIndex((t) => taskKey(t) === String(selectedTaskId))
+        : -1;
+      if (anchor === -1 && selectedIds.length > 0) {
+        anchor = filteredTasks.findIndex((t) => taskKey(t) === selectedIds[selectedIds.length - 1]);
+      }
+      if (anchor === -1) anchor = index;
+      const from = Math.min(anchor, index);
+      const to = Math.max(anchor, index);
+      setSelectedIds(filteredTasks.slice(from, to + 1).map(taskKey));
+      dispatch({ type: 'SELECT_TASK', payload: id });
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return [...next];
+      });
+      dispatch({ type: 'SELECT_TASK', payload: id });
+      return;
+    }
+    setSelectedIds([id]);
+    dispatch({ type: 'SELECT_TASK', payload: id });
+  };
+
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    const title = newTaskTitle.trim();
+    if (!title || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const targetCategoryId = selectedView === 'category' ? selectedCategoryId : null;
+      const taskData = { task_name: title, category_id: targetCategoryId };
+      const savedTask = await taskApi.createTask(taskData);
+      const sanitizedTask = {
+        ...savedTask,
+        status: savedTask.status || 'pending',
+        priority: savedTask.priority || 'none',
+        deadline: savedTask.deadline || null
+      };
+      dispatch({ type: 'ADD_TASK', payload: sanitizedTask });
+      setNewTaskTitle('');
+      showSuccess('Task added!');
+    } catch (error) {
+      showError(error.message || 'Failed to add task');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateStatus = async (task, newStatus) => {
+    const targetId = task.id || task.taskId;
+    if (!targetId) { showError('Task ID missing'); return; }
+    try {
+      await taskApi.updateTask(targetId, { status: newStatus });
+      dispatch({ type: 'UPDATE_TASK', payload: { id: targetId, updates: { status: newStatus } } });
+      showSuccess(`Task updated`);
+    } catch (error) {
       showError('Failed to update task status');
     }
   };
 
-  /**
-   * @function handleDeleteTask
-   * @description Handles the deletion of a task.
-   * Prompts for confirmation, calls the API, and updates local state.
-   * @param {Event} e - The event object.
-   * @param {string} taskId - The ID of the task to delete.
-   */
-  const handleDeleteTask = async (e, taskId) => {
-    e.stopPropagation(); // Prevent task selection when clicking delete
-
-    try {
-      // For frontend dev use   
-      if (process.env.NODE_ENV === 'development') {
-        dispatch({ type: 'DELETE_TASK', payload: taskId });
-
-        console.log(tasks);
-
-        showSuccess(`${taskId} deleted successfully (Dev Mode)`);
-        return; // Exit without calling API in dev mo de
-      }
-
-      // Call API to delete task
-      await taskApi.deleteTask(taskId);
-
-      // Update local state
-      dispatch({ type: 'DELETE_TASK', payload: taskId });
-      showSuccess('Task deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete task:', error);
-      showError('Failed to delete task');
+  const getPriorityClass = (priority) => {
+    switch (priority) {
+      case 'high': return 'border-red-500 hover:bg-red-500/10';
+      case 'medium': return 'border-orange-400 hover:bg-orange-400/10';
+      case 'low': return 'border-blue-400 hover:bg-blue-400/10';
+      default: return 'border-zinc-600 hover:bg-zinc-500/10';
     }
-
   };
 
-  // Add this filter bar above the task list
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200 dark:border-zinc-700">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">{getViewTitle()}</h2>
-        {/* Filter Bar */}
-        <div className="flex space-x-2 mt-2">
-          {[
-            { key: 'all', label: 'All Tasks' }, // Translated
-            { key: 'today', label: 'Today\'s Tasks' }, // Translated
-            { key: 'completed', label: 'Completed Tasks' } // Translated
-          ].map(filter => (
-            <button
-              key={filter.key}
-              onClick={() => {
-                dispatch({ type: 'SET_VIEW', payload: 'filter' });
-                dispatch({ type: 'SET_FILTER', payload: filter.key });
-              }}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${selectedView === 'filter' && activeFilter === filter.key
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
-                }`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {filteredTasks.length === 0 ? (
-          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-            No tasks
-          </div>
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 min-w-0 select-none">
+      {/* 動態標題 */}
+      <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/40">
+        {isEditingHeader ? (
+          <input
+            type="text"
+            value={editHeaderName}
+            onChange={(e) => setEditHeaderName(e.target.value)}
+            onBlur={handleSaveHeaderRename}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveHeaderRename()}
+            className="text-xl font-semibold bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0.5 focus:outline-none focus:border-blue-500"
+            autoFocus
+          />
         ) : (
-          <ul className="divide-y divide-gray-200 dark:divide-zinc-700">
-            {filteredTasks.map(task => (
-              <li
-                key={task.id}
-                onClick={() => handleTaskSelect(task.id)}
-                className={`p-4 transition-colors ${task.id === selectedTaskId
-                    ? 'bg-blue-50 dark:bg-blue-900/20'
-                    : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
-                  }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <button
-                      onClick={(e) => handleToggleComplete(e, task.id)}
-                      className={`mt-0.5 cursor-pointer flex-shrink-0 h-5 w-5 rounded-full border ${task.status === 'completed' // Changed from task.completed
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 dark:border-zinc-600'
-                        } flex items-center justify-center`}
-                    >
-                      {task.status === 'completed' && <CheckIcon className="h-3 w-3" />} {/* Changed from task.completed */}
-                    </button>
-                    <div>
-                      <h3 className={`text-sm font-medium ${task.status === 'completed' // Changed from task.completed
-                          ? 'text-gray-400 dark:text-gray-500 line-through'
-                          : 'text-gray-800 dark:text-gray-200'
-                        }`}>
-                        {task.task_name} {/* Changed from task.title */}
-                      </h3>
-                      {task.deadline && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Due date: {task.deadline}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {task.priority !== 'none' && (
-                      <span className={`text-xs px-2 py-1 rounded-full ${task.priority === 'high'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
-                          : task.priority === 'medium'
-                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                        }`}>
-                        {task.priority}
-                      </span>
-                    )}
-                    <button
-                      onClick={(e) => handleDeleteTask(e, task.id)}
-                      className="text-gray-400 hover:text-red-500 dark:hover:text-red-400"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div
+            className={`flex items-center space-x-2 group ${isEditable ? 'cursor-pointer' : ''}`}
+            onClick={() => { if (isEditable) { setIsEditingHeader(true); setEditHeaderName(headerTitle); } }}
+          >
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+              {headerTitle}
+              {selectedIds.length > 1 ? (
+                <span className="ml-2 text-xs font-normal text-zinc-500 tracking-normal">
+                  {selectedIds.length} selected
+                </span>
+              ) : null}
+            </h1>
+            {isEditable && <PencilIcon className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150" />}
+          </div>
         )}
       </div>
+
+      {/* 📥 頂部新增 */}
+      {selectedView !== 'filter' || (activeFilter !== 'completed' && activeFilter !== 'cancelled' && activeFilter !== 'deleted') ? (
+        <form onSubmit={handleAddTask} className="px-6 pt-4 pb-2">
+          <div className="flex items-center space-x-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/80 rounded-lg px-3 py-2 focus-within:border-zinc-400 dark:focus-within:border-zinc-700 transition-all">
+            <PlusIcon className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Add a task to this list... (Press Enter)"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              disabled={isSubmitting}
+              className="w-full bg-transparent border-none outline-none text-sm placeholder-zinc-400 dark:placeholder-zinc-600 text-zinc-800 dark:text-zinc-200"
+            />
+          </div>
+        </form>
+      ) : null}
+
+      {/* 🎯 封裝 DragDropContext */}
+      <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        {/* 📜 任務列表主滾動區 */}
+        <Droppable droppableId="task-list-droppable">
+          {(provided) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className="flex-1 overflow-y-auto px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
+            >
+              {filteredTasks.length === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center text-zinc-600 text-sm">
+                  <p className="font-medium">No tasks here.</p>
+                  <p className="text-xs text-zinc-700 mt-1">Enjoy your clear day!</p>
+                </div>
+              ) : (
+                filteredTasks.map((task, index) => {
+                  const isDone = task.status === 'completed';
+                  const isTrash = task.status === 'cancelled' || task.status === 'deleted';
+                  const stringId = String(task.id || task.taskId);
+                  const isMultiSelected = selectedIds.includes(stringId);
+                  const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
+                  const isSelectedRow = isMultiSelected || isPrimary;
+                  const isGhost = Boolean(draggingId) && isMultiSelected && draggingId !== stringId && selectedIds.includes(draggingId);
+
+                  return (
+                    <Draggable key={stringId} draggableId={stringId} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...(isSelectedRow ? provided.dragHandleProps : {})}
+                          onClick={(e) => handleSelectTask(e, task, index)}
+                          className={`relative group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border transition-colors duration-150 ${
+                            isSelectedRow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                          } ${
+                            snapshot.isDragging
+                              ? 'bg-zinc-100 dark:bg-zinc-900 border-blue-500/50 shadow-2xl'
+                              : isSelectedRow
+                                ? 'bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white'
+                                : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/40 hover:border-zinc-200 dark:hover:border-zinc-900/60'
+                          } ${isGhost ? 'opacity-30' : ''}`}
+                        >
+                          <div className="flex items-center space-x-3 min-w-0 flex-1">
+                            <div
+                              {...(isSelectedRow ? {} : provided.dragHandleProps)}
+                              onClick={(e) => e.stopPropagation()}
+                              className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
+                                isSelectedRow
+                                  ? 'opacity-100'
+                                  : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
+                              }`}
+                            >
+                              <Bars3Icon className="w-4 h-4" />
+                            </div>
+                            {snapshot.isDragging && selectedIds.includes(stringId) && selectedIds.length > 1 && (
+                              <span className="absolute -top-2 -right-2 z-10 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-[10px] font-semibold text-white flex items-center justify-center">
+                                {selectedIds.length}
+                              </span>
+                            )}
+
+                            {!isTrash ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, isDone ? 'pending' : 'completed'); }}
+                                className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
+                              >
+                                {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'pending'); }}
+                                className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
+                                title="Restore Task"
+                              >
+                                <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className={`text-sm truncate ${task.status === 'completed' ? 'line-through text-zinc-600' :
+                                  task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-800 dark:text-zinc-200'
+                                }`}>
+                                {task.task_name || 'Untitled Task'}
+                              </span>
+                              {task.deadline && !isDone && (
+                                <span className="text-[10px] text-zinc-500 font-mono mt-0.5">📅 {formatToLocalDateStr(task.deadline)}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 右側操作按鈕 */}
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 ml-4 flex-shrink-0 transition-opacity duration-100">
+                            {!isTrash ? (
+                              <>
+                                {task.status !== 'completed' && task.status !== 'cancelled' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'cancelled'); }}
+                                    className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                                    title="Won't Do"
+                                  >
+                                    <NoSymbolIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'deleted'); }}
+                                  className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                                  title="Move to Trash"
+                                >
+                                  <TrashIcon className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const targetId = task.id || task.taskId;
+                                  if (confirm('Permanently delete this task?')) {
+                                    try {
+                                      await taskApi.deleteTask(targetId);
+                                      dispatch({ type: 'DELETE_TASK', payload: targetId });
+                                      showSuccess('Permanently deleted');
+                                    } catch (e) {
+                                      showError('Failed to delete');
+                                    }
+                                  }
+                                }}
+                                className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                                title="Delete Permanently"
+                              >
+                                <TrashIcon className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })
+              )}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
     </div>
   );
 }

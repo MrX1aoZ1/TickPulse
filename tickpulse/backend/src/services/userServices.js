@@ -13,9 +13,9 @@ async function getUserByEmail(email) {
          */
         const [users] = await connection.query(
             `SELECT u.*, ua.credential AS password 
-       FROM Users u
-       JOIN UserAuth ua ON u.id = ua.user_id
-       WHERE u.email = ? AND ua.provider = 'local'`,
+            FROM Users u
+            JOIN UserAuth ua ON u.id = ua.user_id
+            WHERE u.email = ? AND ua.provider = 'local'`,
             [email]
         );
         return users[0] || null;
@@ -117,8 +117,8 @@ async function createUserAccount(email, username, provider, providerId, password
           */
         const defaultInboxId = `inbox_${insertedUserId}`;
         await connection.query(
-            'INSERT INTO Categories (id, user_id, category_name) VALUES (?, ?, ?)',
-            [defaultInboxId, insertedUserId, 'Inbox']
+            'INSERT INTO Categories (id, user_id, category_name, sort_order) VALUES (?, ?, ?, ?)',
+            [defaultInboxId, insertedUserId, 'Inbox', 0.0]
         );
 
         await connection.commit();

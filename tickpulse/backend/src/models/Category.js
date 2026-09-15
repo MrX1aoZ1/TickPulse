@@ -13,6 +13,7 @@ const createCategoryTable = async () => {
     try {
         const connection = await mysql.createConnection({
             host: process.env.MYSQL_HOST,
+            port: Number(process.env.MYSQL_PORT || 3306),
             user: process.env.MYSQL_USER,
             password: process.env.MYSQL_PASSWORD,
             database: process.env.MYSQL_DATABASE,
@@ -25,7 +26,7 @@ const createCategoryTable = async () => {
                 
                 category_name VARCHAR(255),
                 color VARCHAR(7) DEFAULT '#FFFFFF',
-                sort_order DOUBLE DEFAULT 0.0,
+                sort_order VARCHAR(255) DEFAULT 'a',
 
                 FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -16,6 +16,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.22.2",
+    "express-mysql-session": "^3.0.3",
     "express-session": "^1.19.0",
     "mysql2": "^3.22.3",
     "passport": "^0.7.0",

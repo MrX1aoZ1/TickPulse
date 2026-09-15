@@ -7,6 +7,7 @@ const createTaskTable = async () => {
         // Connect to MySQL database
         const connection = await mysql.createConnection({
             host: process.env.MYSQL_HOST,
+            port: Number(process.env.MYSQL_PORT || 3306),
             user: process.env.MYSQL_USER,
             password: process.env.MYSQL_PASSWORD,
             database: process.env.MYSQL_DATABASE,
@@ -34,7 +35,7 @@ const createTaskTable = async () => {
                     is_recurring BOOLEAN DEFAULT FALSE,
                     recurrence_rule VARCHAR(255) DEFAULT NULL,
 
-                    sort_order DOUBLE DEFAULT 0.0,
+                    sort_order VARCHAR(255) DEFAULT '0|0i0000:',
 
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

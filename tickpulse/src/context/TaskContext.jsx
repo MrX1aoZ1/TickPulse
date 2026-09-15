@@ -7,16 +7,27 @@ import { v4 as uuidv4 } from 'uuid';
 // API base URL - change this to your backend URL
 const API_BASE_URL = 'http://localhost:3000';
 
+function sortByRank(items) {
+  return [...items].sort((a, b) =>
+    String(a.sort_order || '').localeCompare(String(b.sort_order || ''))
+  );
+}
+
+function normalizeTasks(tasks) {
+  return sortByRank(tasks.map((task) => ({
+    ...task,
+    sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
+  })));
+}
+
 
 const TaskContext = createContext();
 
 /**
  * @typedef {object} TaskState
  * @property {Array<object>} tasks - The list of tasks.
- * @property {Array<object>} projects - The list of projects.
  * @property {Array<object>} categories - The list of categories.
  * @property {string|null} selectedTaskId - The ID of the currently selected task.
- * @property {string|null} selectedProjectId - The ID of the currently selected project.
  * @property {string|null} selectedCategoryId - The ID of the currently selected category.
  * @property {string} selectedView - The current view type ('project', 'filter', 'category').
  * @property {string} activeFilter - The currently active filter ('all', 'today', 'completed').
@@ -32,7 +43,7 @@ const TaskContext = createContext();
 
 /**
  * Provides task-related state and actions to its children components.
- * Manages tasks, projects, categories, and UI selections.
+ * Manages tasks, categories, and UI selections.
  * Handles data fetching, local storage persistence, and API interactions.
  * @param {object} props - The component props.
  * @param {React.ReactNode} props.children - The child components to be wrapped by the provider.
@@ -41,82 +52,74 @@ const TaskContext = createContext();
 export function TaskProvider({ children }) {
   const [state, dispatch] = useReducer(taskReducer, initialState);
   const { showError } = useToast(); // Hook for displaying error notifications
-  
+
   // Effect to load state from localStorage on component mount
   useEffect(() => {
-    const savedState = loadState(); // Attempt to load saved state from localStorage
+    const savedState = loadState();
     if (savedState) {
-      dispatch({ type: 'HYDRATE_STATE', payload: savedState }); // Restore saved state
+      dispatch({ type: 'HYDRATE_STATE', payload: savedState });
     }
-    
-    /**
-     * Fetches initial tasks and categories from the backend.
-     * This is typically done when the application loads or user logs in.
-     */
+
     const fetchInitialData = async () => {
       try {
-        // Fetch tasks from the API
         const tasks = await taskApi.getTasks();
         if (Array.isArray(tasks)) {
-          dispatch({ type: 'SET_TASKS', payload: tasks }); // Update state with fetched tasks
+          dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
         }
-        
-        // Fetch categories from the API
+
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
-          // Transform categories to a consistent format
+          // 🎯 修正：必須完整保留 sort_order，並強轉字串，防止 null/undefined
           const transformedCategories = categories.map(cat => ({
-            id: cat.category_name || cat.category_id?.toString() || `unnamed-${uuidv4()}`, // Ensure unique ID
-            name: cat.category_name || 'Unnamed Category'
+            id: cat.id || cat.category_id,
+            name: cat.category_name || cat.name,
+            sort_order: cat.sort_order ? String(cat.sort_order) : '0|0i0000:'
           }));
-          
-          // Ensure 'Inbox' category exists
-          if (!transformedCategories.find(c => c.id === 'inbox')) {
-            transformedCategories.unshift({ id: 'inbox', name: 'Inbox' });
-          }
-          
+
+          // 🎯 核心修復：在送入全域狀態前，強制進行 LexoRank 字串排序
+          transformedCategories.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
+
           dispatch({
             type: 'SET_CATEGORIES',
-            payload: transformedCategories // Update state with fetched categories
+            payload: transformedCategories
           });
+
+          const userInbox = transformedCategories.find(c => c.id && c.id.toString().startsWith('inbox_'));
+          if (userInbox) {
+            dispatch({ type: 'SELECT_CATEGORY', payload: userInbox.id });
+          }
         }
       } catch (error) {
         console.error('Failed to fetch initial data:', error);
-        showError('Failed to load tasks and categories'); // Display error to user
+        showError('Failed to load tasks and categories');
       }
     };
-    
-    // Check if user is authenticated (token exists) before fetching data
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      fetchInitialData(); // Fetch data if authenticated
-    }
-  }, [showError]); // Dependency: showError (though typically stable, good practice)
+
+    fetchInitialData();
+  }, [showError]);
 
   // Effect to save state to localStorage whenever the state changes
   useEffect(() => {
     saveState(state); // Persist current state to localStorage
   }, [state]); // Dependency: state
-  
+
   /**
    * Function to refresh the list of tasks from the backend.
    * Useful after operations that might change tasks on the server outside of direct client actions.
    */
   const refreshTasks = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return; // Do not attempt if not authenticated
-      
-      const tasks = await taskApi.getTasks(); // Fetch latest tasks
+      // 🚨 關鍵修正：刪除了對 localStorage token 的依賴
+      const tasks = await taskApi.getTasks();
       if (Array.isArray(tasks)) {
-        dispatch({ type: 'SET_TASKS', payload: tasks }); // Update state with refreshed tasks
+        dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
       }
     } catch (error) {
       console.error('Failed to refresh tasks:', error);
-      showError('Failed to refresh tasks'); // Display error to user
+      showError('Failed to refresh tasks');
     }
   };
-  
+
   return (
     // Provide task state, dispatch function, and refreshTasks function to consuming components
     <TaskContext.Provider value={{ ...state, dispatch, refreshTasks }}>
@@ -141,34 +144,26 @@ export function useTasks() {
 
 
 async function fetchWithAuth(endpoint, options = {}) {
-  const token = localStorage.getItem('accessToken');
-  
-  if (!token) {
-    throw new Error('No authentication token found. Please log in.');
-  }
-  
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
     ...options.headers,
   };
-  
+
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
+      credentials: 'include',
     });
-    
-    if (response.status === 403) {
-      // Clear invalid token
-      localStorage.removeItem('accessToken');
-      throw new Error('Authentication failed. Please log in again.');
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('UNAUTHORIZED');
     }
-    
+
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}: ${await response.text()}`);
     }
-    
+
     return response.json();
   } catch (error) {
     console.error('API request failed:', error);
@@ -181,80 +176,128 @@ async function fetchWithAuth(endpoint, options = {}) {
  * @description An object containing functions for interacting with the task-related backend API endpoints.
  */
 export const taskApi = {
-  getTasks: async () => fetchWithAuth('/api/tasks'),
-  getTaskById: async (id) => fetchWithAuth(`/api/tasks/${id}`),
+  getTasks: async () =>
+    fetchWithAuth('/api/tasks', {
+      method: 'GET',
+      credentials: 'include',
+    }),
   createTask: async (taskData) =>
     fetchWithAuth('/api/tasks', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(taskData),
     }),
-  updateTask: async (id, updates) =>
-    fetchWithAuth(`/api/tasks/${id}`, {
+  updateTask: async (taskId, updates) =>
+    fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(updates),
     }),
-  deleteTask: async (id) =>
-    fetchWithAuth(`/api/tasks/${id}`, { method: 'DELETE' }),
-  updateTaskStatus: async (id, status) =>
-    fetchWithAuth(`/api/tasks/${id}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status }),
+  deleteTask: async (taskId) =>
+    fetchWithAuth(`/api/tasks/${taskId}`, {
+      method: 'DELETE',
+      credentials: 'include',
     }),
-  updateTaskPriority: async (id, priority) =>
-    fetchWithAuth(`/api/tasks/${id}/priority`, {
+  updateTaskOrder: async (taskId, { prev_id = null, next_id = null } = {}) =>
+    fetchWithAuth(`/api/tasks/${taskId}/reorder`, {
       method: 'PUT',
-      body: JSON.stringify({ priority }),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ prev_id, next_id }),
     }),
-  updateTaskDeadline: async (id, deadline) =>
-    fetchWithAuth(`/api/tasks/${id}/deadline`, {
+  updateTasksOrder: async ({ ids, prev_id = null, next_id = null }) =>
+    fetchWithAuth('/api/tasks/reorder', {
       method: 'PUT',
-      body: JSON.stringify({ deadline }),
-    }),
-  updateTaskCategory: async (id, category_name) =>
-    fetchWithAuth(`/api/tasks/${id}/category`, {
-      method: 'PUT',
-      body: JSON.stringify({ category_name }),
-    }),
-  updateTaskContent: async (id, content) =>
-    fetchWithAuth(`/api/tasks/${id}/content`, { // Corrected path from /tasks to /api/tasks for consistency
-      method: 'PUT',
-      body: JSON.stringify({ content }),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ ids, prev_id, next_id }),
     }),
 
+  // updateTaskStatus: async (id, status) =>
+  //   fetchWithAuth(`/api/tasks/${id}/status`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ status }),
+  //   }),
+
+  // updateTaskPriority: async (id, priority) =>
+  //   fetchWithAuth(`/api/tasks/${id}/priority`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ priority }),
+  //   }),
+
+  // updateTaskDeadline: async (id, deadline) =>
+  //   fetchWithAuth(`/api/tasks/${id}/deadline`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ deadline }),
+  //   }),
+
+  // updateTaskCategory: async (id, category_id) =>
+  //   fetchWithAuth(`/api/tasks/${id}/category`, {
+  //     method: 'PUT',
+  //     body: JSON.stringify({ category_id }),
+  //   }),
+
+  // updateTaskContent: async (id, content) =>
+  //   fetchWithAuth(`/api/tasks/${id}/content`, { // Corrected path from /tasks to /api/tasks for consistency
+  //     method: 'PUT',
+  //     body: JSON.stringify({ content }),
+  //   }),
+
+
+
   // Category related API calls
-  getAllCategories: async () => {
-    try {
-      return await fetchWithAuth('/api/tasks/category');
-    } catch (error) {
-      // Check if it's the specific 404 error "No categories found"
-      if (error.message && error.message.includes('404') && error.message.includes('No categories found')) {
-        console.warn('API returned 404 for categories (No categories found), treating as empty list.');
-        return []; // Return an empty array if no categories are found for the user
-      }
-      // For any other error, re-throw it to be handled by the caller
-      console.error('Error fetching categories:', error);
-      throw error;
-    }
-  },
-  createCategory: async (categoryName) =>
-    fetchWithAuth('/api/tasks/category', { // Changed to match backend route
+  getAllCategories: async () =>
+    fetchWithAuth('/api/categories', {
+      method: 'GET',
+      credentials: 'include',
+    }),
+  createCategory: async (category_name) =>
+    fetchWithAuth('/api/categories', {
       method: 'POST',
-      body: JSON.stringify({ category_name: categoryName }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ name: category_name }),
     }),
-  updateCategory: async (id, categoryName) =>
-    fetchWithAuth(`/api/tasks/category/${id}`, { // Changed to match backend route
+  updateCategory: async (category_id, category_name, category_color) =>
+    fetchWithAuth(`/api/categories/${category_id}`, {
       method: 'PUT',
-      body: JSON.stringify({ category_name: categoryName }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        name: category_name,
+        color: category_color
+      }),
     }),
-  deleteCategory: async (id) =>
-    fetchWithAuth(`/api/tasks/category/${id}`, { method: 'DELETE' }), // Changed to match backend route
+  updateCategoryOrder: async (category_id, { prev_id = null, next_id = null } = {}) =>
+    fetchWithAuth(`/api/categories/${category_id}/order`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        prev_id,
+        next_id,
+      }),
+    }),
+  deleteCategory: async (category_id) =>
+    fetchWithAuth(`/api/categories/${category_id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
 };
 
 // Initial state for the reducer
 const initialState = {
   tasks: [],
-  categories: [{ id: 'inbox', name: 'Inbox' }], // Changed from projects to categories
-  selectedCategoryId: 'inbox', 
+  categories: [],
+  selectedCategoryId: null,
   selectedTaskId: null,
   selectedView: 'filter', // Changed from 'category' to 'filter'
   activeFilter: 'all', // Set default filter to 'all'
@@ -265,13 +308,9 @@ const initialState = {
 // Function to save state to local storage (Client-side only)
 const saveState = (state) => {
   try {
-    // Ensure localStorage is accessed only on the client
     if (typeof window !== 'undefined') {
       const stateToSave = {
-        tasks: state.tasks,
-        categories: state.categories, // Changed from projects to categories
-        selectedCategoryId: state.selectedCategoryId, // Changed from selectedProjectId
-        selectedTaskId: state.selectedTaskId,
+        selectedCategoryId: state.selectedCategoryId,
         selectedView: state.selectedView,
         activeFilter: state.activeFilter,
       };
@@ -307,9 +346,7 @@ const taskReducer = (state, action) => {
       return {
         ...initialState,
         ...(action.payload || {}),
-        categories: action.payload?.categories?.find(c => c.id === 'inbox')
-                  ? action.payload.categories
-                  : [...(action.payload?.categories || []), { id: 'inbox', name: 'Inbox' }].filter((c, i, arr) => arr.findIndex(t => t.id === c.id) === i),
+        categories: action.payload?.categories || [],
       };
 
     case 'ADD_TASK': {
@@ -319,7 +356,7 @@ const taskReducer = (state, action) => {
           tasks: [...state.tasks, action.payload]
         };
       }
-      
+
       const newId = uuidv4();
       const newTask = {
         id: newId,
@@ -327,7 +364,7 @@ const taskReducer = (state, action) => {
         content: action.payload.content || '',
         deadline: action.payload.deadline,
         priority: action.payload.priority || 'low',
-        category_name: action.payload.categoryName,
+        category_id: action.payload.categoryId || state.selectedCategoryId,
         status: 'pending',
         completed: false,
         createdAt: new Date().toISOString(),
@@ -341,11 +378,11 @@ const taskReducer = (state, action) => {
     case 'TOGGLE_TASK': {
       const updatedTasks = state.tasks.map(task =>
         task.id === action.payload
-          ? { 
-              ...task, 
-              completed: !task.completed,
-              status: !task.completed ? 'completed' : 'pending' // Update status to match database
-            }
+          ? {
+            ...task,
+            completed: !task.completed,
+            status: !task.completed ? 'completed' : 'pending' // Update status to match database
+          }
           : task
       );
       return {
@@ -363,28 +400,47 @@ const taskReducer = (state, action) => {
     }
 
     case 'UPDATE_TASK': {
-      const updatedTasks = state.tasks.map(task =>
-        task.id === action.payload.taskId
-          ? { ...task, ...action.payload.updates }
-          : task
-      );
-      return {
-        ...state,
-        tasks: updatedTasks
-      };
-    }
+  const { id, status, task_name, content, deadline, priority, category_id, updates } = action.payload;
+  
+  // 智慧相容層：同時支援「攤平結構」與「updates 物件結構」的傳入方式
+  const incomingUpdates = updates || {
+    status,
+    task_name,
+    content,
+    deadline,
+    priority,
+    category_id
+  };
+
+  return {
+    ...state,
+    tasks: state.tasks.map((task) => {
+      if (String(task.id || task.taskId) === String(id)) {
+        
+        return {
+          ...task,
+          ...incomingUpdates 
+        };
+      }
+      return task; // 不是目標任務，保持原樣
+    })
+  };
+}
 
     case 'SET_CATEGORIES': {
+      // 不要在這裡按 sort_order 再排一次。拖曳後 array 已經是新順序，
+      // 但被拖的那一筆還是舊 rank；若立刻 localeCompare，列表會彈回原位再跳到新位，整頁閃一下。
       return {
         ...state,
-        categories: action.payload
+        categories: action.payload,
       };
     }
 
     case 'ADD_CATEGORY': {
+      const updatedCategories = [...state.categories, action.payload];
       return {
         ...state,
-        categories: [...state.categories, action.payload]
+        categories: updatedCategories,
       };
     }
 
@@ -402,6 +458,25 @@ const taskReducer = (state, action) => {
           ? { ...category, name: action.payload.newName }
           : category
       );
+      return {
+        ...state,
+        categories: updatedCategories
+      };
+    }
+
+    case 'REORDER_CATEGORIES': {
+      const updatedCategories = state.categories.map(category =>
+        category.id === action.payload.categoryId
+          ? { ...category, sort_order: action.payload.newOrder }
+          : category
+      );
+      
+      // 🚀 核心優化：如果兩個分類的 sort_order 真的因為切分太多次而相等，
+      // 前端也維持原有的陣列相對順序（或有 created_at 時以它兜底），主要以新算出來的排序從小到大排
+      updatedCategories.sort((a, b) =>
+        String(a.sort_order).localeCompare(String(b.sort_order))
+      );
+
       return {
         ...state,
         categories: updatedCategories
@@ -429,7 +504,11 @@ const taskReducer = (state, action) => {
     case 'SET_TASKS':
       return {
         ...state,
-        tasks: action.payload
+        // 與分類相同：拖曳後維持 array 順序，只正規化 sort_order 字串，不要重新排序。
+        tasks: (action.payload || []).map((task) => ({
+          ...task,
+          sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
+        })),
       };
     default:
       return state;

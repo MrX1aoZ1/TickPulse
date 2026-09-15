@@ -42,3 +42,6 @@ next-env.d.ts
 
 # request
 request.rest
+
+# Old backend files
+/backend
