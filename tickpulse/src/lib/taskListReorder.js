@@ -12,9 +12,8 @@
  *   6. updateTasksOrder({ ids, prev_id, next_id })  LexoRank 仍由後端算
  *   7. 失敗 rollback  dispatch SET_TASKS(previous)
  *
- * hello-pangea 的 source.index / destination.index 現在剛好等於 dataIndex，
- * 只因為整份 filteredTasks 都有掛 DOM。虛擬化之後它們會變成「視窗裡第幾列」，
- * 不得再當真實位置。改用 findDataIndex(filteredTasks, overId)。
+ * 階段 1：中欄已拿掉 hello-pangea（避免與 virtualizer 搶 scrollTop）。
+ * 階段 3 用 dnd-kit 的 activeId / overId → findDataIndex，不要用視窗下標。
  */
 
 export function taskKey(task) {
@@ -29,8 +28,7 @@ export function findDataIndex(list, id) {
 }
 
 /**
- * 之後 dnd-kit 的 onDragEnd 用這個把 activeId / overId 轉成 moveSelectedBlock 的下標。
- * 現階段 TaskList 仍吃 hello-pangea 的 index，尚未接上。
+ * 階段 3 的 onDragEnd 用這個把 activeId / overId 轉成 moveSelectedBlock 的下標。
  */
 export function resolveDropDataIndices(filteredTasks, activeId, overId) {
   return {

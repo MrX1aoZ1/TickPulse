@@ -3,24 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
-import {
-  applyFilteredOrderToAllTasks,
-  getMovingKeys,
-  getReorderPayload,
-  moveSelectedBlock,
-  taskKey,
-  taskOrderSignature,
-} from '@/lib/taskListReorder';
-import {
-  PlusIcon,
-  TrashIcon,
-  NoSymbolIcon,
-  ArrowUturnLeftIcon,
-  PencilIcon,
-  Bars3Icon // 🎯 漢堡選單圖標，作為 Draggable 的拖曳把手
-} from '@heroicons/react/24/outline';
-// 🎯 引入與 CategoryList 相同的拖曳組件
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { taskKey } from '@/lib/taskListReorder';
+import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
+import TaskVirtualList from './TaskVirtualList';
+import { formatToLocalDateStr } from './TaskRow';
 
 export default function TaskList() {
   const {
@@ -38,19 +24,8 @@ export default function TaskList() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingHeader, setIsEditingHeader] = useState(false);
   const [editHeaderName, setEditHeaderName] = useState('');
-  const [draggingId, setDraggingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // 輔助函式：日期格式化
-  const formatToLocalDateStr = (dateInput) => {
-    if (!dateInput) return null;
-    if (typeof dateInput === 'string' && dateInput.length === 10) return dateInput;
-    const d = new Date(dateInput);
-    if (isNaN(d.getTime())) return null;
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
-
-  // 動態計算目前 View 的頂端標題
   const currentCategory = categories.find(cat => cat.id === selectedCategoryId);
   let headerTitle = '';
   let isEditable = false;
@@ -70,7 +45,6 @@ export default function TaskList() {
     }
   }
 
-  // 處理標題重新命名
   const handleSaveHeaderRename = async () => {
     const trimmed = editHeaderName.trim();
     if (!trimmed || trimmed === currentCategory?.name) {
@@ -91,7 +65,6 @@ export default function TaskList() {
     }
   };
 
-  // 任務過濾邏輯
   const filteredTasks = tasks.filter(task => {
     const taskDateStr = formatToLocalDateStr(task.deadline);
     if (selectedView === 'category') {
@@ -128,47 +101,6 @@ export default function TaskList() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  const onDragStart = (start) => {
-    setDraggingId(start.draggableId);
-  };
-
-  const onDragEnd = async (result) => {
-    setDraggingId(null);
-    const { destination, source, draggableId } = result;
-    if (!destination) return;
-
-    // CONTRACT: hello-pangea 的 source.index / destination.index 現在剛好等於
-    // filteredTasks 的 dataIndex，只因為每一列都有掛 DOM。虛擬化之後它們會變成
-    // window index，不得再當真實位置。階段 3 改用 overId → findDataIndex。
-    const sourceIndex = source.index;
-    const destIndex = destination.index;
-
-    const movingKeys = getMovingKeys(filteredTasks, selectedIds, draggableId);
-    if (movingKeys.length === 1 && destIndex === sourceIndex) return;
-
-    const previous = tasks;
-    const reorderedFiltered = moveSelectedBlock(
-      filteredTasks,
-      movingKeys,
-      sourceIndex,
-      destIndex,
-    );
-    if (taskOrderSignature(filteredTasks) === taskOrderSignature(reorderedFiltered)) return;
-
-    dispatch({
-      type: 'SET_TASKS',
-      payload: applyFilteredOrderToAllTasks(tasks, filteredTasks, reorderedFiltered),
-    });
-
-    try {
-      await taskApi.updateTasksOrder(getReorderPayload(reorderedFiltered, movingKeys));
-    } catch (error) {
-      console.error('Failed to update task order:', error);
-      showError('Failed to save task order');
-      dispatch({ type: 'SET_TASKS', payload: previous });
-    }
-  };
 
   const handleSelectTask = (e, task, index) => {
     const id = taskKey(task);
@@ -241,18 +173,20 @@ export default function TaskList() {
     }
   };
 
-  const getPriorityClass = (priority) => {
-    switch (priority) {
-      case 'high': return 'border-red-500 hover:bg-red-500/10';
-      case 'medium': return 'border-orange-400 hover:bg-orange-400/10';
-      case 'low': return 'border-blue-400 hover:bg-blue-400/10';
-      default: return 'border-zinc-600 hover:bg-zinc-500/10';
+  const handlePermanentDelete = async (task) => {
+    const targetId = task.id || task.taskId;
+    if (!confirm('Permanently delete this task?')) return;
+    try {
+      await taskApi.deleteTask(targetId);
+      dispatch({ type: 'DELETE_TASK', payload: targetId });
+      showSuccess('Permanently deleted');
+    } catch (error) {
+      showError('Failed to delete');
     }
   };
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 min-w-0 select-none">
-      {/* 動態標題 */}
       <div className="px-6 pt-6 pb-2 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/40">
         {isEditingHeader ? (
           <input
@@ -282,7 +216,6 @@ export default function TaskList() {
         )}
       </div>
 
-      {/* 📥 頂部新增 */}
       {selectedView !== 'filter' || (activeFilter !== 'completed' && activeFilter !== 'cancelled' && activeFilter !== 'deleted') ? (
         <form onSubmit={handleAddTask} className="px-6 pt-4 pb-2">
           <div className="flex items-center space-x-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/80 rounded-lg px-3 py-2 focus-within:border-zinc-400 dark:focus-within:border-zinc-700 transition-all">
@@ -299,150 +232,15 @@ export default function TaskList() {
         </form>
       ) : null}
 
-      {/* 🎯 封裝 DragDropContext */}
-      <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        {/* 📜 任務列表主滾動區 */}
-        <Droppable droppableId="task-list-droppable">
-          {(provided) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-              className="flex-1 overflow-y-auto px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
-            >
-              {filteredTasks.length === 0 ? (
-                <div className="h-48 flex flex-col items-center justify-center text-zinc-600 text-sm">
-                  <p className="font-medium">No tasks here.</p>
-                  <p className="text-xs text-zinc-700 mt-1">Enjoy your clear day!</p>
-                </div>
-              ) : (
-                filteredTasks.map((task, index) => {
-                  const isDone = task.status === 'completed';
-                  const isTrash = task.status === 'cancelled' || task.status === 'deleted';
-                  const stringId = String(task.id || task.taskId);
-                  const isMultiSelected = selectedIds.includes(stringId);
-                  const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
-                  const isSelectedRow = isMultiSelected || isPrimary;
-                  const isGhost = Boolean(draggingId) && isMultiSelected && draggingId !== stringId && selectedIds.includes(draggingId);
-
-                  return (
-                    <Draggable key={stringId} draggableId={stringId} index={index}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...(isSelectedRow ? provided.dragHandleProps : {})}
-                          onClick={(e) => handleSelectTask(e, task, index)}
-                          className={`relative group flex items-center justify-between py-2.5 px-3 mb-1 rounded-lg border transition-colors duration-150 ${
-                            isSelectedRow ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                          } ${
-                            snapshot.isDragging
-                              ? 'bg-zinc-100 dark:bg-zinc-900 border-blue-500/50 shadow-2xl'
-                              : isSelectedRow
-                                ? 'bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white'
-                                : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900/40 hover:border-zinc-200 dark:hover:border-zinc-900/60'
-                          } ${isGhost ? 'opacity-30' : ''}`}
-                        >
-                          <div className="flex items-center space-x-3 min-w-0 flex-1">
-                            <div
-                              {...(isSelectedRow ? {} : provided.dragHandleProps)}
-                              onClick={(e) => e.stopPropagation()}
-                              className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
-                                isSelectedRow
-                                  ? 'opacity-100'
-                                  : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
-                              }`}
-                            >
-                              <Bars3Icon className="w-4 h-4" />
-                            </div>
-                            {snapshot.isDragging && selectedIds.includes(stringId) && selectedIds.length > 1 && (
-                              <span className="absolute -top-2 -right-2 z-10 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-[10px] font-semibold text-white flex items-center justify-center">
-                                {selectedIds.length}
-                              </span>
-                            )}
-
-                            {!isTrash ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, isDone ? 'pending' : 'completed'); }}
-                                className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
-                              >
-                                {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'pending'); }}
-                                className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
-                                title="Restore Task"
-                              >
-                                <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className={`text-sm truncate ${task.status === 'completed' ? 'line-through text-zinc-600' :
-                                  task.status === 'cancelled' ? 'line-through text-zinc-600 italic' : 'text-zinc-800 dark:text-zinc-200'
-                                }`}>
-                                {task.task_name || 'Untitled Task'}
-                              </span>
-                              {task.deadline && !isDone && (
-                                <span className="text-[10px] text-zinc-500 font-mono mt-0.5">📅 {formatToLocalDateStr(task.deadline)}</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 右側操作按鈕 */}
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 ml-4 flex-shrink-0 transition-opacity duration-100">
-                            {!isTrash ? (
-                              <>
-                                {task.status !== 'completed' && task.status !== 'cancelled' && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'cancelled'); }}
-                                    className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-                                    title="Won't Do"
-                                  >
-                                    <NoSymbolIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'deleted'); }}
-                                  className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-                                  title="Move to Trash"
-                                >
-                                  <TrashIcon className="w-3.5 h-3.5" />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const targetId = task.id || task.taskId;
-                                  if (confirm('Permanently delete this task?')) {
-                                    try {
-                                      await taskApi.deleteTask(targetId);
-                                      dispatch({ type: 'DELETE_TASK', payload: targetId });
-                                      showSuccess('Permanently deleted');
-                                    } catch (e) {
-                                      showError('Failed to delete');
-                                    }
-                                  }
-                                }}
-                                className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-                                title="Delete Permanently"
-                              >
-                                <TrashIcon className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  );
-                })
-              )}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+      <TaskVirtualList
+        filteredTasks={filteredTasks}
+        selectedIds={selectedIds}
+        selectedTaskId={selectedTaskId}
+        scrollResetKey={`${selectedView}:${selectedCategoryId}:${activeFilter}`}
+        onSelectTask={handleSelectTask}
+        onUpdateStatus={handleUpdateStatus}
+        onPermanentDelete={handlePermanentDelete}
+      />
     </div>
   );
 }
