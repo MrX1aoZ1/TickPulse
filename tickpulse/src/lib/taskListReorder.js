@@ -12,8 +12,8 @@
  *   6. updateTasksOrder({ ids, prev_id, next_id })  LexoRank 仍由後端算
  *   7. 失敗 rollback  dispatch SET_TASKS(previous)
  *
- * 階段 1：中欄已拿掉 hello-pangea（避免與 virtualizer 搶 scrollTop）。
- * 階段 3 用 dnd-kit 的 activeId / overId → findDataIndex，不要用視窗下標。
+ * 階段 3：中欄 dnd-kit 的 onDragEnd 用 activeId / overId → findDataIndex。
+ * 單列、source === dest 不發 API。多選整組搬是階段 4。
  */
 
 export function taskKey(task) {

@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 import { applyTaskClick } from '@/lib/taskListSelection';
+import {
+  applyFilteredOrderToAllTasks,
+  moveSelectedBlock,
+  resolveDropDataIndices,
+  getReorderPayload,
+  taskOrderSignature,
+} from '@/lib/taskListReorder';
 import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import TaskVirtualList from './TaskVirtualList';
 import { formatToLocalDateStr } from './TaskRow';
@@ -101,6 +108,37 @@ export default function TaskList() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  const handleReorder = async ({ activeId, overId }) => {
+    if (!overId || activeId === overId) return;
+
+    const { sourceIndex, destIndex } = resolveDropDataIndices(filteredTasks, activeId, overId);
+    if (sourceIndex < 0 || destIndex < 0 || sourceIndex === destIndex) return;
+
+    // Phase 3: visible-range single row only. Multi-select block move is Phase 4.
+    const movingKeys = [activeId];
+    const reorderedFiltered = moveSelectedBlock(
+      filteredTasks,
+      movingKeys,
+      sourceIndex,
+      destIndex,
+    );
+    if (taskOrderSignature(filteredTasks) === taskOrderSignature(reorderedFiltered)) return;
+
+    const previous = tasks;
+    dispatch({
+      type: 'SET_TASKS',
+      payload: applyFilteredOrderToAllTasks(tasks, filteredTasks, reorderedFiltered),
+    });
+
+    try {
+      await taskApi.updateTasksOrder(getReorderPayload(reorderedFiltered, movingKeys));
+    } catch (error) {
+      console.error('Failed to update task order:', error);
+      showError('Failed to save task order');
+      dispatch({ type: 'SET_TASKS', payload: previous });
+    }
+  };
 
   const handleSelectTask = (e, task) => {
     const next = applyTaskClick({
@@ -221,6 +259,7 @@ export default function TaskList() {
         onSelectTask={handleSelectTask}
         onUpdateStatus={handleUpdateStatus}
         onPermanentDelete={handlePermanentDelete}
+        onReorder={handleReorder}
       />
     </div>
   );
