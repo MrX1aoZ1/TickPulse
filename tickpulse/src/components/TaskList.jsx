@@ -15,6 +15,22 @@ import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import TaskVirtualList from './TaskVirtualList';
 import { formatToLocalDateStr } from './TaskRow';
 
+const CREATED_AT_SORTED_FILTERS = ['all', 'today', 'next7'];
+
+function createdAtMs(task) {
+  const raw = task?.created_at || task?.createdAt;
+  const t = raw ? new Date(raw).getTime() : 0;
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function sortTasksByCreatedAtDesc(tasks) {
+  return [...tasks].sort((a, b) => {
+    const diff = createdAtMs(b) - createdAtMs(a);
+    if (diff !== 0) return diff;
+    return String(b.id || b.taskId || '').localeCompare(String(a.id || a.taskId || ''));
+  });
+}
+
 export default function TaskList() {
   const {
     tasks = [],
@@ -97,6 +113,13 @@ export default function TaskList() {
     return true;
   });
 
+  const isCreatedAtSortedView =
+    selectedView === 'filter' && CREATED_AT_SORTED_FILTERS.includes(activeFilter);
+  const visibleTasks = isCreatedAtSortedView
+    ? sortTasksByCreatedAtDesc(filteredTasks)
+    : filteredTasks;
+  const enableReorder = !isCreatedAtSortedView;
+
   useEffect(() => {
     setSelectedIds([]);
   }, [selectedView, selectedCategoryId, activeFilter]);
@@ -110,25 +133,25 @@ export default function TaskList() {
   }, []);
 
   const handleReorder = async ({ activeId, overId }) => {
-    if (!overId || activeId === overId) return;
+    if (!enableReorder || !overId || activeId === overId) return;
 
-    const { sourceIndex, destIndex } = resolveDropDataIndices(filteredTasks, activeId, overId);
+    const { sourceIndex, destIndex } = resolveDropDataIndices(visibleTasks, activeId, overId);
     if (sourceIndex < 0 || destIndex < 0 || sourceIndex === destIndex) return;
 
     // Phase 3: visible-range single row only. Multi-select block move is Phase 4.
     const movingKeys = [activeId];
     const reorderedFiltered = moveSelectedBlock(
-      filteredTasks,
+      visibleTasks,
       movingKeys,
       sourceIndex,
       destIndex,
     );
-    if (taskOrderSignature(filteredTasks) === taskOrderSignature(reorderedFiltered)) return;
+    if (taskOrderSignature(visibleTasks) === taskOrderSignature(reorderedFiltered)) return;
 
     const previous = tasks;
     dispatch({
       type: 'SET_TASKS',
-      payload: applyFilteredOrderToAllTasks(tasks, filteredTasks, reorderedFiltered),
+      payload: applyFilteredOrderToAllTasks(tasks, visibleTasks, reorderedFiltered),
     });
 
     try {
@@ -142,7 +165,7 @@ export default function TaskList() {
 
   const handleSelectTask = (e, task) => {
     const next = applyTaskClick({
-      filteredTasks,
+      filteredTasks: visibleTasks,
       selectedIds,
       selectedTaskId,
       task,
@@ -252,9 +275,10 @@ export default function TaskList() {
       ) : null}
 
       <TaskVirtualList
-        filteredTasks={filteredTasks}
+        filteredTasks={visibleTasks}
         selectedIds={selectedIds}
         selectedTaskId={selectedTaskId}
+        enableReorder={enableReorder}
         scrollResetKey={`${selectedView}:${selectedCategoryId}:${activeFilter}`}
         onSelectTask={handleSelectTask}
         onUpdateStatus={handleUpdateStatus}

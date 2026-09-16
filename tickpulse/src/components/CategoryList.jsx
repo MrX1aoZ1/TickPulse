@@ -7,7 +7,7 @@ import {
   PlusIcon, PencilIcon, TrashIcon,
   CalendarIcon, RectangleStackIcon,
   Bars3Icon, CheckCircleIcon, XCircleIcon,
-  ClockIcon
+  ClockIcon, InboxIcon
 } from '@heroicons/react/24/outline';
 // 🎯 引入現代版 react-beautiful-dnd 拖曳組件
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -17,6 +17,10 @@ const smartFilters = [
   { id: 'today', name: 'Today\'s Tasks', icon: CalendarIcon },
   { id: 'next7', name: 'Next 7 Days', icon: ClockIcon },
 ];
+
+function isInboxCategoryId(id) {
+  return Boolean(id && String(id).startsWith('inbox_'));
+}
 
 const statusFilters = [
   { id: 'completed', name: 'Completed', icon: CheckCircleIcon },
@@ -103,7 +107,7 @@ export default function CategoryList() {
 
   const handleDeleteCategory = async (e, id) => {
     e.stopPropagation();
-    if (id && id.toString().startsWith('inbox_')) return;
+    if (isInboxCategoryId(id)) return;
     if (confirm('Are you sure you want to delete this list?')) {
       try {
         await taskApi.deleteCategory(id);
@@ -129,6 +133,9 @@ export default function CategoryList() {
     }
   };
 
+  const inboxCategory = categories.find((category) => isInboxCategoryId(category.id));
+  const userLists = categories.filter((category) => !isInboxCategoryId(category.id));
+
   // 拖曳只告訴後端前後鄰居是誰，LexoRank 由後端根據資料庫現況計算。
   const onDragEnd = async (result) => {
     const { destination, source, draggableId } = result;
@@ -136,17 +143,17 @@ export default function CategoryList() {
     if (!destination || destination.index === source.index) return;
 
     const previous = categories;
-    const reorderedCategories = Array.from(categories);
-    const [removed] = reorderedCategories.splice(source.index, 1);
-    reorderedCategories.splice(destination.index, 0, removed);
+    const reorderedLists = Array.from(userLists);
+    const [removed] = reorderedLists.splice(source.index, 1);
+    reorderedLists.splice(destination.index, 0, removed);
 
     const idx = destination.index;
-    const prevCategory = reorderedCategories[idx - 1] || null;
-    const nextCategory = reorderedCategories[idx + 1] || null;
+    const prevCategory = reorderedLists[idx - 1] || null;
+    const nextCategory = reorderedLists[idx + 1] || null;
 
     dispatch({
       type: 'SET_CATEGORIES',
-      payload: reorderedCategories,
+      payload: inboxCategory ? [inboxCategory, ...reorderedLists] : reorderedLists,
     });
 
     try {
@@ -164,7 +171,7 @@ export default function CategoryList() {
   return (
     <div className="w-64 h-full bg-white dark:bg-[#1e1e1e] text-zinc-700 dark:text-zinc-300 flex flex-col py-4 border-r border-zinc-200 dark:border-zinc-800/40 select-none">
 
-      {/* 智能過濾器 */}
+      {/* 智能過濾器 + 固定 Inbox */}
       <div className="space-y-0.5 px-2 mb-6">
         {smartFilters.map((filter) => {
           const isActive = selectedView === 'filter' && activeFilter === filter.id;
@@ -182,6 +189,24 @@ export default function CategoryList() {
             </button>
           );
         })}
+        {inboxCategory && (
+          <button
+            type="button"
+            onClick={() => handleSelectCategory(inboxCategory.id)}
+            className={`w-full flex items-center px-3 py-2 text-sm rounded-md transition-colors ${
+              selectedView === 'category' && selectedCategoryId === inboxCategory.id
+                ? 'bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-white'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200'
+            }`}
+          >
+            <InboxIcon className={`h-4 w-4 mr-3 ${
+              selectedView === 'category' && selectedCategoryId === inboxCategory.id
+                ? 'text-blue-400'
+                : 'text-zinc-500'
+            }`} />
+            {inboxCategory.name || 'Inbox'}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 space-y-6">
@@ -216,7 +241,7 @@ export default function CategoryList() {
                   {...provided.droppableProps}
                   ref={provided.innerRef}
                 >
-                  {categories.map((category, index) => {
+                  {userLists.map((category, index) => {
                     const isSelected = selectedView === 'category' && selectedCategoryId === category.id;
 
                     return (
@@ -253,8 +278,7 @@ export default function CategoryList() {
                               )}
                             </div>
 
-                            {category?.id && !category.id.toString().startsWith('inbox_') && (
-                              <div className="hidden group-hover:flex items-center space-x-1 flex-shrink-0">
+                            <div className="hidden group-hover:flex items-center space-x-1 flex-shrink-0">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -269,10 +293,9 @@ export default function CategoryList() {
                                   onClick={(e) => handleDeleteCategory(e, category.id)}
                                   className="text-zinc-500 hover:text-red-400 p-0.5"
                                 >
-                                  <TrashIcon className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
+                                <TrashIcon className="w-3 h-3" />
+                              </button>
+                            </div>
                           </div>
                         )}
                       </Draggable>

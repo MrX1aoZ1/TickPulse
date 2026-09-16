@@ -32,6 +32,7 @@ export default function TaskRow({
   isSelected,
   isDragging = false,
   isOverlay = false,
+  enableDrag = true,
   dragHandle,
   onSelect,
   onUpdateStatus,
@@ -39,15 +40,15 @@ export default function TaskRow({
 }) {
   const isDone = task.status === 'completed';
   const isTrash = task.status === 'cancelled' || task.status === 'deleted';
-  const rowDragHandle = isSelected && !isOverlay ? dragHandle : undefined;
-  const iconDragHandle = !isSelected && !isOverlay ? dragHandle : undefined;
+  const rowDragHandle = enableDrag && isSelected && !isOverlay ? dragHandle : undefined;
+  const iconDragHandle = enableDrag && !isSelected && !isOverlay ? dragHandle : undefined;
 
   return (
     <div
       {...rowDragHandle}
       onClick={isOverlay || isDragging ? undefined : (e) => onSelect(e, task)}
       className={`relative group flex items-center justify-between py-2.5 px-3 rounded-lg border transition-colors duration-150 ${
-        isSelected || isOverlay ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+        enableDrag && (isSelected || isOverlay) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
       } ${
         isOverlay
           ? 'bg-zinc-100 dark:bg-zinc-900 border-blue-500/50 shadow-2xl'
@@ -57,17 +58,19 @@ export default function TaskRow({
       } ${isDragging && !isOverlay ? 'opacity-0' : ''} ${isOverlay ? 'pointer-events-none' : ''}`}
     >
       <div className="flex items-center space-x-3 min-w-0 flex-1">
-        <div
-          {...iconDragHandle}
-          onClick={(e) => e.stopPropagation()}
-          className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
-            isSelected || isOverlay
-              ? 'opacity-100'
-              : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
-          }`}
-        >
-          <Bars3Icon className="w-4 h-4" />
-        </div>
+        {enableDrag ? (
+          <div
+            {...iconDragHandle}
+            onClick={(e) => e.stopPropagation()}
+            className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
+              isSelected || isOverlay
+                ? 'opacity-100'
+                : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
+            }`}
+          >
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        ) : null}
 
         {!isTrash ? (
           <button
@@ -136,6 +139,7 @@ export function SortableTaskRow(props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: taskKey(props.task),
     animateLayoutChanges: () => false,
+    disabled: props.enableDrag === false,
   });
 
   return (
