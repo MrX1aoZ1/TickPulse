@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
-import { taskKey } from '@/lib/taskListReorder';
+import { applyTaskClick } from '@/lib/taskListSelection';
 import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import TaskVirtualList from './TaskVirtualList';
 import { formatToLocalDateStr } from './TaskRow';
@@ -102,37 +102,18 @@ export default function TaskList() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleSelectTask = (e, task, index) => {
-    const id = taskKey(task);
-    if (e.shiftKey) {
-      let anchor = selectedTaskId
-        ? filteredTasks.findIndex((t) => taskKey(t) === String(selectedTaskId))
-        : -1;
-      if (anchor === -1 && selectedIds.length > 0) {
-        anchor = filteredTasks.findIndex((t) => taskKey(t) === selectedIds[selectedIds.length - 1]);
-      }
-      if (anchor === -1) anchor = index;
-      const from = Math.min(anchor, index);
-      const to = Math.max(anchor, index);
-      setSelectedIds(filteredTasks.slice(from, to + 1).map(taskKey));
-      dispatch({ type: 'SELECT_TASK', payload: id });
-      return;
-    }
-    if (e.metaKey || e.ctrlKey) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        return [...next];
-      });
-      dispatch({ type: 'SELECT_TASK', payload: id });
-      return;
-    }
-    setSelectedIds([id]);
-    dispatch({ type: 'SELECT_TASK', payload: id });
+  const handleSelectTask = (e, task) => {
+    const next = applyTaskClick({
+      filteredTasks,
+      selectedIds,
+      selectedTaskId,
+      task,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey,
+    });
+    setSelectedIds(next.selectedIds);
+    dispatch({ type: 'SELECT_TASK', payload: next.selectedTaskId });
   };
 
   const handleAddTask = async (e) => {

@@ -89,7 +89,6 @@ export default function TaskVirtualList({
                 <div className="pb-1">
                   <TaskRow
                     task={task}
-                    dataIndex={virtualRow.index}
                     isSelected={isSelected}
                     onSelect={onSelectTask}
                     onUpdateStatus={onUpdateStatus}

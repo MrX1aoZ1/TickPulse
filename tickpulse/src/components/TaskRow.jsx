@@ -26,7 +26,6 @@ function getPriorityClass(priority) {
 
 export default function TaskRow({
   task,
-  dataIndex,
   isSelected,
   onSelect,
   onUpdateStatus,
@@ -37,7 +36,7 @@ export default function TaskRow({
 
   return (
     <div
-      onClick={(e) => onSelect(e, task, dataIndex)}
+      onClick={(e) => onSelect(e, task)}
       className={`relative group flex items-center justify-between py-2.5 px-3 rounded-lg border transition-colors duration-150 cursor-pointer ${
         isSelected
           ? 'bg-zinc-100 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-white'

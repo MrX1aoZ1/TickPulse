@@ -6,6 +6,7 @@
     "devStart": "nodemon backend/server.js",
     "dev": "next dev --turbopack",
     "test": "next dev APP_ENV=test next dev --turbopack",
+    "test:lib": "node src/lib/taskListSelection.test.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
