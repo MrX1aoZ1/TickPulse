@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -20,6 +22,8 @@ import (
 	"tickpulse/backend-go/internal/services"
 	"tickpulse/backend-go/internal/utils"
 )
+
+const googleOAuthState = "tickpulse_google_oauth"
 
 // AuthHandler 對應 src/controllers/authController.js
 type AuthHandler struct {
@@ -141,7 +145,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	c.Redirect(http.StatusFound, h.oauthConfig().AuthCodeURL("tickpulse_google_oauth", oauth2.AccessTypeOnline))
+	state := googleOAuthState
+	if c.Query("next") == "/sign-up" {
+		state = googleOAuthState + ":sign-up"
+	}
+	c.Redirect(http.StatusFound, h.oauthConfig().AuthCodeURL(state, oauth2.AccessTypeOnline))
+}
+
+func oauthFailPath(state string) string {
+	if strings.HasSuffix(state, ":sign-up") {
+		return "/sign-up"
+	}
+	return "/login"
+}
+
+// clientRedirect issues a 200 HTML page that then navigates to the frontend.
+// A 302 from :3000 to :3001 can drop the session cookie (bounce-tracking / cross-origin redirect).
+func (h *AuthHandler) clientRedirect(c *gin.Context, path string) {
+	dest := h.Cfg.ClientURL + path
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(fmt.Sprintf(
+		`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=%s">
+<title>Redirecting…</title>
+</head>
+<body>
+<p>Redirecting…</p>
+<script>window.location.replace(%q);</script>
+</body>
+</html>`, html.EscapeString(dest), dest)))
 }
 
 type googleProfile struct {
@@ -151,28 +186,32 @@ type googleProfile struct {
 }
 
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
-	loginURL := h.Cfg.ClientURL + "/login"
+	failPath := oauthFailPath(c.Query("state"))
+	fail := func(code string) {
+		h.clientRedirect(c, failPath+"?error="+code)
+	}
+
 	if c.Query("error") != "" {
-		c.Redirect(http.StatusFound, loginURL+"?error=auth_failed")
+		fail("auth_failed")
 		return
 	}
 	code := c.Query("code")
 	if code == "" {
-		c.Redirect(http.StatusFound, loginURL+"?error=auth_failed")
+		fail("auth_failed")
 		return
 	}
 
 	tok, err := h.oauthConfig().Exchange(c.Request.Context(), code)
 	if err != nil {
 		log.Println("Google Callback Error:", err)
-		c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+		fail("server_error")
 		return
 	}
 
 	resp, err := h.oauthConfig().Client(c.Request.Context(), tok).Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
 		log.Println("Google Callback Error:", err)
-		c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+		fail("server_error")
 		return
 	}
 	defer resp.Body.Close()
@@ -181,7 +220,7 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	var profile googleProfile
 	if err := json.Unmarshal(raw, &profile); err != nil || profile.ID == "" {
 		log.Println("Google Callback Error:", err)
-		c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+		fail("server_error")
 		return
 	}
 
@@ -196,17 +235,17 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		linked, err := h.Users.IsProviderLinked("google", profile.ID)
 		if err != nil {
 			log.Println("Google Callback Error:", err)
-			c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+			fail("server_error")
 			return
 		}
 		if linked {
 			msg := url.QueryEscape("This Google account is already linked to another user.")
-			c.Redirect(http.StatusFound, loginURL+"?error="+msg)
+			h.clientRedirect(c, failPath+"?error="+msg)
 			return
 		}
 		if err := h.Users.LinkProviderToUser(id, "google", profile.ID); err != nil {
 			log.Println("Google Callback Error:", err)
-			c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+			fail("server_error")
 			return
 		}
 		userID = id
@@ -214,43 +253,46 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		existing, err := h.Users.GetUserByProvider("google", profile.ID)
 		if err != nil {
 			log.Println("Google Callback Error:", err)
-			c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+			fail("server_error")
 			return
 		}
-		if existing == nil {
+		if existing != nil {
+			userID = existing.ID
+		} else if byEmail, err := h.Users.GetUserAccountByEmail(email); err != nil {
+			log.Println("Google Callback Error:", err)
+			fail("server_error")
+			return
+		} else if byEmail != nil {
+			if err := h.Users.LinkProviderToUser(byEmail.ID, "google", profile.ID); err != nil {
+				log.Println("Google Callback Error:", err)
+				fail("server_error")
+				return
+			}
+			userID = byEmail.ID
+		} else {
 			created, err := h.Users.CreateUserAccount(email, username, "google", profile.ID, nil, nil)
 			if err != nil {
 				log.Println("Google Callback Error:", err)
-				c.Redirect(http.StatusFound, loginURL+"?error=server_error")
+				fail("server_error")
 				return
 			}
 			userID = created.ID
-		} else {
-			userID = existing.ID
 		}
 	}
 
 	user, err := h.Users.GetUserByID(userID)
 	if err != nil || user == nil {
 		log.Println("Google Session Error:", err)
-		c.Redirect(http.StatusFound, loginURL+"?error=session_error")
+		fail("session_error")
 		return
 	}
 	if err := middleware.SaveLogin(c, user.ID); err != nil {
 		log.Println("Google Session Error:", err)
-		c.Redirect(http.StatusFound, loginURL+"?error=session_error")
+		fail("session_error")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Google Auth Pipeline Success! (Backend Only Test)",
-		"note":    "Cookie (connect.sid) has been automatically saved by your browser.",
-		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"username": user.Username,
-		},
-	})
+	h.clientRedirect(c, "/auth/callback")
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {

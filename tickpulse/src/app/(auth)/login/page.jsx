@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import SocialAuthButtons from '@/components/SocialAuthButtons';
+import { consumeOAuthError } from '@/lib/oauthError';
 import React, { useCallback, useState, useEffect } from 'react';
 
 /**
@@ -28,6 +30,11 @@ export default function LoginPage() {
       router.push('/webapp/');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    const message = consumeOAuthError(router, '/login');
+    if (message) setFormError(message);
+  }, [router]);
 
   /**
    * Handles the form submission for login.
@@ -141,6 +148,8 @@ export default function LoginPage() {
             >
               {isLoading ? "Login..." : "Login"}
             </button>
+
+            <SocialAuthButtons disabled={isLoading} />
 
             {/* Link to Registration Page */}
             <div className="text-center mt-4">

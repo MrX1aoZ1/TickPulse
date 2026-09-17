@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"net/http"
+	"time"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 
@@ -31,6 +34,13 @@ func SessionUserID(c *gin.Context) (int, bool) {
 
 func SaveLogin(c *gin.Context, userID int) error {
 	session := sessions.Default(c)
+	session.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   int((24 * time.Hour).Seconds()),
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
 	session.Set("user_id", userID)
 	return session.Save()
 }

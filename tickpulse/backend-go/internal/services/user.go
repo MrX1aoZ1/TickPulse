@@ -13,6 +13,18 @@ type UserService struct {
 	DB *sqlx.DB
 }
 
+func (s *UserService) GetUserAccountByEmail(email string) (*models.User, error) {
+	var user models.User
+	err := s.DB.Get(&user, `SELECT id, email, username, license_key, created_at FROM Users WHERE email = ?`, email)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (s *UserService) GetUserByEmail(email string) (*models.UserCredentials, error) {
 	var row models.UserCredentials
 	err := s.DB.Get(&row, `
