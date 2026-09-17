@@ -125,7 +125,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		task.RecurrenceRule = body.RecurrenceRule
 	}
 
-	nextRank, err := h.nextRankInCategory(user.ID, task.CategoryID)
+	nextRank, err := h.nextRankForUser(user.ID)
 	if err != nil {
 		c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})
 		return
@@ -352,20 +352,12 @@ func (h *TaskHandler) neighborSortOrder(userID int, neighborID string, moving ma
 	return task.SortOrder, nil
 }
 
-func (h *TaskHandler) nextRankInCategory(userID int, categoryID *string) (string, error) {
+func (h *TaskHandler) nextRankForUser(userID int) (string, error) {
 	var last string
-	var err error
-	if categoryID == nil || *categoryID == "" {
-		err = h.DB.Get(&last, `
-			SELECT sort_order FROM tasks
-			WHERE user_id = ? AND (category_id IS NULL OR category_id = '')
-			ORDER BY sort_order DESC LIMIT 1`, userID)
-	} else {
-		err = h.DB.Get(&last, `
-			SELECT sort_order FROM tasks
-			WHERE user_id = ? AND category_id = ?
-			ORDER BY sort_order DESC LIMIT 1`, userID, *categoryID)
-	}
+	err := h.DB.Get(&last, `
+		SELECT sort_order FROM tasks
+		WHERE user_id = ?
+		ORDER BY sort_order DESC LIMIT 1`, userID)
 	if err == sql.ErrNoRows {
 		return models.NextCategoryRank(""), nil
 	}

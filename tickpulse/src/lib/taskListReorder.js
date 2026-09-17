@@ -12,8 +12,8 @@
  *   6. updateTasksOrder({ ids, prev_id, next_id })  LexoRank 仍由後端算
  *   7. 失敗 rollback  dispatch SET_TASKS(previous)
  *
- * 階段 3：中欄 dnd-kit 的 onDragEnd 用 activeId / overId → findDataIndex。
- * 單列、source === dest 不發 API。多選整組搬是階段 4。
+ * 階段 4：overId 優先；沒有真實 overId 時用 scroll/pointer 估 dataIndex。
+ * movingKeys 在 selectedIds 含 activeId 且長度 > 1 時整組搬。單列、source === dest 不發 API。
  */
 
 export function taskKey(task) {
@@ -28,12 +28,46 @@ export function findDataIndex(list, id) {
 }
 
 /**
- * 階段 3 的 onDragEnd 用這個把 activeId / overId 轉成 moveSelectedBlock 的下標。
+ * 把指標在列表內容裡的 Y 偏移估成 dataIndex。
+ * totalSize / itemCount 當平均列高；還沒量過時退回 estimateSize。
  */
-export function resolveDropDataIndices(filteredTasks, activeId, overId) {
+export function estimateDataIndexFromOffset({
+  offsetY,
+  itemCount,
+  totalSize = 0,
+  estimateSize = 46,
+}) {
+  if (itemCount <= 0) return -1;
+  const rowSize = (totalSize > 0 ? totalSize / itemCount : estimateSize) || estimateSize || 1;
+  if (!(rowSize > 0)) return 0;
+  if (offsetY <= 0) return 0;
+  return Math.max(0, Math.min(itemCount - 1, Math.floor(offsetY / rowSize)));
+}
+
+/** 有真實 overId 立刻用 id；否則才用 fallback dataIndex。 */
+export function resolveOverDataIndex(filteredTasks, overId, fallbackIndex) {
+  if (overId != null && String(overId) !== '') {
+    const destIndex = findDataIndex(filteredTasks, overId);
+    if (destIndex >= 0) return destIndex;
+  }
+  if (
+    fallbackIndex != null
+    && Number.isFinite(fallbackIndex)
+    && fallbackIndex >= 0
+    && fallbackIndex < filteredTasks.length
+  ) {
+    return fallbackIndex;
+  }
+  return -1;
+}
+
+/**
+ * onDragEnd：activeId / overId（可空）+ fallbackIndex → moveSelectedBlock 的下標。
+ */
+export function resolveDropDataIndices(filteredTasks, activeId, overId, fallbackIndex) {
   return {
     sourceIndex: findDataIndex(filteredTasks, activeId),
-    destIndex: findDataIndex(filteredTasks, overId),
+    destIndex: resolveOverDataIndex(filteredTasks, overId, fallbackIndex),
   };
 }
 

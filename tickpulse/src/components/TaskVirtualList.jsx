@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  closestCenter,
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -17,14 +17,32 @@ import {
 } from '@dnd-kit/sortable';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import TaskRow, { SortableTaskRow } from './TaskRow';
-import { taskKey } from '@/lib/taskListReorder';
+import {
+  estimateDataIndexFromOffset,
+  getMovingKeys,
+  taskKey,
+} from '@/lib/taskListReorder';
 
 const DEFAULT_ROW_SIZE = 46;
 const DEADLINE_ROW_SIZE = 62;
+const IDLE_OVERSCAN = 12;
+const DRAG_OVERSCAN = 15;
 
 function estimateTaskSize(task) {
   if (task?.deadline && task.status !== 'completed') return DEADLINE_ROW_SIZE;
   return DEFAULT_ROW_SIZE;
+}
+
+function clientYFromEvent(event) {
+  if (!event) return null;
+  if (typeof event.clientY === 'number') return event.clientY;
+  const touch = event.touches?.[0] || event.changedTouches?.[0];
+  return touch ? touch.clientY : null;
+}
+
+function pointerWithinOrNone(args) {
+  const hits = pointerWithin(args);
+  return hits.length > 0 ? hits : [];
 }
 
 export default function TaskVirtualList({
@@ -39,6 +57,8 @@ export default function TaskVirtualList({
   onReorder,
 }) {
   const parentRef = useRef(null);
+  const pointerYRef = useRef(null);
+  const scrollTopRef = useRef(0);
   const [activeId, setActiveId] = useState(null);
 
   const sensors = useSensors(
@@ -47,12 +67,16 @@ export default function TaskVirtualList({
   );
 
   const sortableIds = filteredTasks.map(taskKey);
+  const movingKeys = activeId
+    ? getMovingKeys(filteredTasks, selectedIds, activeId)
+    : [];
+  const movingSet = new Set(movingKeys);
 
   const virtualizer = useVirtualizer({
     count: filteredTasks.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => estimateTaskSize(filteredTasks[index]),
-    overscan: 8,
+    overscan: activeId ? DRAG_OVERSCAN : IDLE_OVERSCAN,
     getItemKey: (index) => taskKey(filteredTasks[index]) || index,
     measureElement:
       typeof window !== 'undefined' && navigator.userAgent.indexOf('Firefox') === -1
@@ -74,16 +98,52 @@ export default function TaskVirtualList({
   const activeTask = activeId
     ? filteredTasks.find((task) => taskKey(task) === activeId)
     : null;
-  const activeSelected = Boolean(
-    activeTask && (
-      selectedIds.includes(taskKey(activeTask))
-      || (selectedTaskId && taskKey(activeTask) === String(selectedTaskId))
-    ),
-  );
+  const overlayCount = movingKeys.length;
 
-  const clearActive = () => {
+  const captureScrollTop = () => {
+    scrollTopRef.current = parentRef.current?.scrollTop ?? 0;
+  };
+
+  const restoreScrollAndMeasure = () => {
+    const top = scrollTopRef.current;
+    const apply = () => {
+      if (parentRef.current) parentRef.current.scrollTop = top;
+    };
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      virtualizer.measure();
+      apply();
+    });
+  };
+
+  const estimateFallbackIndex = () => {
+    const parent = parentRef.current;
+    const pointerY = pointerYRef.current;
+    if (!parent || pointerY == null) return -1;
+    const rect = parent.getBoundingClientRect();
+    const paddingTop = Number.parseFloat(getComputedStyle(parent).paddingTop) || 0;
+    return estimateDataIndexFromOffset({
+      offsetY: parent.scrollTop + (pointerY - rect.top) - paddingTop,
+      itemCount: filteredTasks.length,
+      totalSize: virtualizer.getTotalSize(),
+      estimateSize: DEFAULT_ROW_SIZE,
+    });
+  };
+
+  const finishDrag = async (event) => {
+    const currentActiveId = event?.active ? String(event.active.id) : null;
+    const overId = event?.over ? String(event.over.id) : null;
+    const fallbackIndex = estimateFallbackIndex();
     setActiveId(null);
-    requestAnimationFrame(() => virtualizer.measure());
+    pointerYRef.current = null;
+    try {
+      if (currentActiveId) {
+        await onReorder?.({ activeId: currentActiveId, overId, fallbackIndex });
+      }
+    } finally {
+      restoreScrollAndMeasure();
+    }
   };
 
   const renderRows = (RowComponent, rowProps = {}) => (
@@ -107,8 +167,7 @@ export default function TaskVirtualList({
             key={virtualRow.key}
             data-index={virtualRow.index}
             ref={(node) => {
-              if (!node) return;
-              if (activeId && stringId === activeId) return;
+              if (!node || activeId) return;
               virtualizer.measureElement(node);
             }}
             style={{
@@ -123,6 +182,7 @@ export default function TaskVirtualList({
               <RowComponent
                 task={task}
                 isSelected={isSelected}
+                isMovingPlaceholder={Boolean(activeId) && movingSet.has(stringId)}
                 onSelect={onSelectTask}
                 onUpdateStatus={onUpdateStatus}
                 onPermanentDelete={onPermanentDelete}
@@ -138,6 +198,8 @@ export default function TaskVirtualList({
   const listBody = (
     <div
       ref={parentRef}
+      role="list"
+      aria-label="Task list"
       className="flex-1 overflow-y-auto px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
     >
       {filteredTasks.length === 0 ? (
@@ -162,28 +224,39 @@ export default function TaskVirtualList({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithinOrNone}
       autoScroll={{
         enabled: true,
         layoutShiftCompensation: false,
         canScroll: (element) => element === parentRef.current,
+        acceleration: 25,
+        interval: 5,
+        threshold: { x: 0.2, y: 0.12 },
       }}
-      onDragStart={({ active }) => setActiveId(String(active.id))}
-      onDragCancel={clearActive}
-      onDragEnd={({ active, over }) => {
-        const currentActiveId = String(active.id);
-        const overId = over ? String(over.id) : null;
-        clearActive();
-        onReorder?.({ activeId: currentActiveId, overId });
+      onDragStart={({ active }) => {
+        captureScrollTop();
+        setActiveId(String(active.id));
       }}
+      onDragMove={({ delta, activatorEvent }) => {
+        const startY = clientYFromEvent(activatorEvent);
+        if (startY != null) pointerYRef.current = startY + delta.y;
+        captureScrollTop();
+      }}
+      onDragCancel={() => {
+        setActiveId(null);
+        pointerYRef.current = null;
+        restoreScrollAndMeasure();
+      }}
+      onDragEnd={finishDrag}
     >
       {listBody}
       <DragOverlay dropAnimation={null}>
         {activeTask ? (
           <TaskRow
             task={activeTask}
-            isSelected={activeSelected}
+            isSelected
             isOverlay
+            overlayCount={overlayCount}
             onSelect={onSelectTask}
             onUpdateStatus={onUpdateStatus}
             onPermanentDelete={onPermanentDelete}

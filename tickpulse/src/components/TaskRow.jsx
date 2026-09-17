@@ -32,6 +32,7 @@ export default function TaskRow({
   isSelected,
   isDragging = false,
   isOverlay = false,
+  overlayCount = 0,
   enableDrag = true,
   dragHandle,
   onSelect,
@@ -47,6 +48,9 @@ export default function TaskRow({
     <div
       {...rowDragHandle}
       onClick={isOverlay || isDragging ? undefined : (e) => onSelect(e, task)}
+      role={isOverlay ? undefined : 'listitem'}
+      aria-label={task.task_name || 'Untitled Task'}
+      aria-selected={isSelected}
       className={`relative group flex items-center justify-between py-2.5 px-3 rounded-lg border transition-colors duration-150 ${
         enableDrag && (isSelected || isOverlay) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
       } ${
@@ -131,11 +135,16 @@ export default function TaskRow({
           </button>
         )}
       </div>
+      {isOverlay && overlayCount > 1 ? (
+        <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-white text-[11px] font-semibold leading-5 text-center shadow">
+          {overlayCount}
+        </span>
+      ) : null}
     </div>
   );
 }
 
-export function SortableTaskRow(props) {
+export function SortableTaskRow({ isMovingPlaceholder = false, ...props }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: taskKey(props.task),
     animateLayoutChanges: () => false,
@@ -150,7 +159,11 @@ export function SortableTaskRow(props) {
         transition,
       }}
     >
-      <TaskRow {...props} dragHandle={{ ...attributes, ...listeners }} isDragging={isDragging} />
+      <TaskRow
+        {...props}
+        dragHandle={{ ...attributes, ...listeners }}
+        isDragging={isDragging || isMovingPlaceholder}
+      />
     </div>
   );
 }

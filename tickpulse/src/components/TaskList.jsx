@@ -6,9 +6,10 @@ import { useToast } from '@/context/ToastContext';
 import { applyTaskClick } from '@/lib/taskListSelection';
 import {
   applyFilteredOrderToAllTasks,
+  getMovingKeys,
+  getReorderPayload,
   moveSelectedBlock,
   resolveDropDataIndices,
-  getReorderPayload,
   taskOrderSignature,
 } from '@/lib/taskListReorder';
 import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
@@ -132,14 +133,18 @@ export default function TaskList() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleReorder = async ({ activeId, overId }) => {
-    if (!enableReorder || !overId || activeId === overId) return;
+  const handleReorder = async ({ activeId, overId, fallbackIndex }) => {
+    if (!enableReorder || !activeId) return;
 
-    const { sourceIndex, destIndex } = resolveDropDataIndices(visibleTasks, activeId, overId);
+    const { sourceIndex, destIndex } = resolveDropDataIndices(
+      visibleTasks,
+      activeId,
+      overId,
+      fallbackIndex,
+    );
     if (sourceIndex < 0 || destIndex < 0 || sourceIndex === destIndex) return;
 
-    // Phase 3: visible-range single row only. Multi-select block move is Phase 4.
-    const movingKeys = [activeId];
+    const movingKeys = getMovingKeys(visibleTasks, selectedIds, activeId);
     const reorderedFiltered = moveSelectedBlock(
       visibleTasks,
       movingKeys,
