@@ -13,21 +13,25 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import TaskRow, { SortableTaskRow } from './TaskRow';
 import {
   estimateDataIndexFromOffset,
+  findDataIndex,
   getMovingKeys,
   taskKey,
 } from '@/lib/taskListReorder';
 
 const DEFAULT_ROW_SIZE = 46;
 const DEADLINE_ROW_SIZE = 62;
-const IDLE_OVERSCAN = 12;
-const DRAG_OVERSCAN = 15;
+const OVERSCAN = 12;
+
+/** Virtual rows already use translateY(start). Do not also shift neighbors. */
+function noShiftStrategy() {
+  return null;
+}
 
 function estimateTaskSize(task) {
   if (task?.deadline && task.status !== 'completed') return DEADLINE_ROW_SIZE;
@@ -44,6 +48,27 @@ function clientYFromEvent(event) {
 function pointerWithinOrNone(args) {
   const hits = pointerWithin(args);
   return hits.length > 0 ? hits : [];
+}
+
+/** Pale outline sitting in the pb-1 gap between the two tasks around the drop. */
+function DropGapMark({ edge }) {
+  if (edge !== 'before' && edge !== 'after') return null;
+  const place = edge === 'before' ? 'top-0 -translate-y-full' : 'bottom-0';
+  return (
+    <div
+      aria-hidden
+      data-drop-gap={edge}
+      className={`pointer-events-none absolute left-3 right-3 z-10 h-1.5 ${place} rounded-full border border-blue-400/70 bg-blue-400/25 shadow-[0_0_6px_rgba(59,130,246,0.35)]`}
+    />
+  );
+}
+
+function dropGapEdge({ activeId, overId, sourceIndex, destIndex, rowIndex, movingSet }) {
+  if (!activeId || destIndex < 0 || sourceIndex < 0) return null;
+  if (destIndex === sourceIndex) return null;
+  if (movingSet.has(overId)) return null;
+  if (rowIndex !== destIndex) return null;
+  return destIndex > sourceIndex ? 'after' : 'before';
 }
 
 function SettledSection({
@@ -115,6 +140,7 @@ export default function TaskVirtualList({
   const pointerYRef = useRef(null);
   const scrollTopRef = useRef(0);
   const [activeId, setActiveId] = useState(null);
+  const [overId, setOverId] = useState(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -131,7 +157,7 @@ export default function TaskVirtualList({
     count: filteredTasks.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => estimateTaskSize(filteredTasks[index]) || DEFAULT_ROW_SIZE,
-    overscan: activeId ? DRAG_OVERSCAN : IDLE_OVERSCAN,
+    overscan: OVERSCAN,
     getItemKey: (index) => taskKey(filteredTasks[index]) || index,
     measureElement:
       typeof window !== 'undefined' && navigator.userAgent.indexOf('Firefox') === -1
@@ -197,6 +223,7 @@ export default function TaskVirtualList({
     const overId = event?.over ? String(event.over.id) : null;
     const fallbackIndex = estimateFallbackIndex();
     setActiveId(null);
+    setOverId(null);
     pointerYRef.current = null;
     try {
       if (currentActiveId) {
@@ -206,6 +233,9 @@ export default function TaskVirtualList({
       restoreScrollAndMeasure();
     }
   };
+
+  const sourceIndex = activeId ? findDataIndex(filteredTasks, activeId) : -1;
+  const destIndex = overId ? findDataIndex(filteredTasks, overId) : -1;
 
   const renderRows = (RowComponent, rowProps = {}) => (
     <div
@@ -222,6 +252,14 @@ export default function TaskVirtualList({
         const isMultiSelected = selectedIds.includes(stringId);
         const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
         const isSelected = isMultiSelected || Boolean(isPrimary);
+        const dropEdge = dropGapEdge({
+          activeId,
+          overId,
+          sourceIndex,
+          destIndex,
+          rowIndex: virtualRow.index,
+          movingSet,
+        });
 
         return (
           <div
@@ -236,10 +274,12 @@ export default function TaskVirtualList({
               top: 0,
               left: 0,
               width: '100%',
+              zIndex: dropEdge ? 2 : undefined,
               transform: `translateY(${virtualRow.start}px)`,
             }}
           >
-            <div className="pb-1">
+            <div className="relative pb-1">
+              <DropGapMark edge={dropEdge} />
               <RowComponent
                 task={task}
                 isSelected={isSelected}
@@ -272,7 +312,7 @@ export default function TaskVirtualList({
         <>
           {filteredTasks.length > 0 ? (
             enableReorder ? (
-              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+              <SortableContext items={sortableIds} strategy={noShiftStrategy}>
                 {renderRows(SortableTaskRow)}
               </SortableContext>
             ) : (
@@ -313,6 +353,10 @@ export default function TaskVirtualList({
       onDragStart={({ active }) => {
         captureScrollTop();
         setActiveId(String(active.id));
+        setOverId(String(active.id));
+      }}
+      onDragOver={({ over }) => {
+        setOverId(over ? String(over.id) : null);
       }}
       onDragMove={({ delta, activatorEvent }) => {
         const startY = clientYFromEvent(activatorEvent);
@@ -321,6 +365,7 @@ export default function TaskVirtualList({
       }}
       onDragCancel={() => {
         setActiveId(null);
+        setOverId(null);
         pointerYRef.current = null;
         restoreScrollAndMeasure();
       }}

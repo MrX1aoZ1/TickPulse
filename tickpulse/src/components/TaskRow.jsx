@@ -1,7 +1,6 @@
 'use client';
 
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowUturnLeftIcon,
   Bars3Icon,
@@ -182,20 +181,15 @@ export default function TaskRow({
 }
 
 export function SortableTaskRow({ isMovingPlaceholder = false, ...props }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
     id: taskKey(props.task),
     animateLayoutChanges: () => false,
+    transition: null,
     disabled: props.enableDrag === false,
   });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-    >
+    <div ref={setNodeRef}>
       <TaskRow
         {...props}
         dragHandle={{ ...attributes, ...listeners }}
