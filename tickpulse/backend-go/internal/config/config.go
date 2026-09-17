@@ -21,6 +21,9 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleCallbackURL  string
+	GitHubClientID     string
+	GitHubClientSecret string
+	GitHubCallbackURL  string
 }
 
 func Load() Config {
@@ -40,6 +43,9 @@ func Load() Config {
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleCallbackURL:  getenv("GOOGLE_CALLBACK_URL", "http://localhost:3000/auth/google/callback"),
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		GitHubCallbackURL:  getenv("GITHUB_CALLBACK_URL", "http://localhost:3000/auth/github/callback"),
 	}
 	if cfg.AccessSecret == "" {
 		log.Fatal("ACCESS_TOKEN_SECRET is required")

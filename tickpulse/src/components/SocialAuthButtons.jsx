@@ -6,9 +6,10 @@ import { FaGithub } from 'react-icons/fa';
 const API_BASE_URL = 'http://localhost:3000';
 
 export default function SocialAuthButtons({ disabled = false, next }) {
-  const startGoogleLogin = () => {
-    const params = next ? `?next=${encodeURIComponent(next)}` : '';
-    window.location.href = `${API_BASE_URL}/auth/google${params}`;
+  const oauthQuery = next ? `?next=${encodeURIComponent(next)}` : '';
+
+  const startOAuth = (provider) => {
+    window.location.href = `${API_BASE_URL}/auth/${provider}${oauthQuery}`;
   };
 
   return (
@@ -23,7 +24,7 @@ export default function SocialAuthButtons({ disabled = false, next }) {
 
       <button
         type="button"
-        onClick={startGoogleLogin}
+        onClick={() => startOAuth('google')}
         disabled={disabled}
         className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-gray-300 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
@@ -33,16 +34,12 @@ export default function SocialAuthButtons({ disabled = false, next }) {
 
       <button
         type="button"
-        disabled
-        aria-disabled="true"
-        title="GitHub login is not available yet"
-        className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-gray-200 rounded-md bg-gray-50 text-gray-400 font-medium cursor-not-allowed"
+        onClick={() => startOAuth('github')}
+        disabled={disabled}
+        className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-gray-300 rounded-md bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <FaGithub className="text-xl" aria-hidden="true" />
         Continue with GitHub
-        <span className="text-[10px] uppercase tracking-wide bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">
-          Soon
-        </span>
       </button>
     </div>
   );

@@ -1,6 +1,6 @@
 const OAUTH_ERRORS = {
-  auth_failed: 'Google login was cancelled or failed. Please try again.',
-  server_error: 'Server error during Google login. Please try again later.',
+  auth_failed: 'Social login was cancelled or failed. Please try again.',
+  server_error: 'Server error during social login. Please try again later.',
   session_error: 'Could not create a session. Please try again.',
 };
 

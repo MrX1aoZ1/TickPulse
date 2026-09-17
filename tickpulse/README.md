@@ -44,9 +44,14 @@ MYSQL_DATABASE=tickpulse_db
 PORT=3000
 ACCESS_TOKEN_SECRET=任意一串密钥
 CLIENT_URL=http://localhost:3001
+
+# GitHub OAuth（可选）
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=
+# GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 ```
 
-Google 登录可选；不填也不影响邮箱密码登录。`MYSQL_PASSWORD` 会同时用作 Docker MySQL 的 root 密码。
+Google / GitHub 登录可选；不填也不影响邮箱密码登录。`MYSQL_PASSWORD` 会同时用作 Docker MySQL 的 root 密码。
 
 在 `backend-go` 目录启动数据库容器（Compose 会自动读同目录的 `.env`）：
 
@@ -202,5 +207,5 @@ node initial_api_test.js
 **前端能开但登录失败 / CORS**  
 确认前端是 3001、后端是 3000，且没有两个后端抢同一个端口。
 
-**Google 登录跳不过去**  
-需要在 Google Cloud 配好 OAuth，并填 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_CALLBACK_URL`。本地邮箱注册不受影响。
+**Google / GitHub 登录跳不过去**  
+需要在 Google Cloud 或 GitHub OAuth App 配好，并填对应的 `*_CLIENT_ID`、`*_CLIENT_SECRET`、`*_CALLBACK_URL`。GitHub 回调地址用 `http://localhost:3000/auth/github/callback`。本地邮箱注册不受影响。
