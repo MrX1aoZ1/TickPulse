@@ -15,6 +15,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import TaskRow, { SortableTaskRow } from './TaskRow';
 import {
@@ -45,8 +46,61 @@ function pointerWithinOrNone(args) {
   return hits.length > 0 ? hits : [];
 }
 
+function SettledSection({
+  tasks,
+  expanded,
+  selectedIds,
+  selectedTaskId,
+  onToggle,
+  onSelectTask,
+  onUpdateStatus,
+  onPermanentDelete,
+}) {
+  if (!tasks.length) return null;
+  const label = `Completed & Won't Do (${tasks.length})`;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-800/80">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium tracking-wide uppercase text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900/40 transition-colors"
+      >
+        {expanded ? (
+          <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
+        ) : (
+          <ChevronRightIcon className="w-3.5 h-3.5 flex-shrink-0" />
+        )}
+        <span>{label}</span>
+      </button>
+      {expanded
+        ? tasks.map((task) => {
+            const stringId = taskKey(task);
+            const isMultiSelected = selectedIds.includes(stringId);
+            const isPrimary = selectedTaskId && stringId === String(selectedTaskId);
+            return (
+              <div key={stringId} className="pb-1">
+                <TaskRow
+                  task={task}
+                  isSelected={isMultiSelected || Boolean(isPrimary)}
+                  enableDrag={false}
+                  onSelect={onSelectTask}
+                  onUpdateStatus={onUpdateStatus}
+                  onPermanentDelete={onPermanentDelete}
+                />
+              </div>
+            );
+          })
+        : null}
+    </div>
+  );
+}
+
 export default function TaskVirtualList({
   filteredTasks,
+  settledTasks = [],
+  settledExpanded = false,
   selectedIds,
   selectedTaskId,
   enableReorder = true,
@@ -55,6 +109,7 @@ export default function TaskVirtualList({
   onUpdateStatus,
   onPermanentDelete,
   onReorder,
+  onToggleSettled = () => {},
 }) {
   const parentRef = useRef(null);
   const pointerYRef = useRef(null);
@@ -208,17 +263,33 @@ export default function TaskVirtualList({
       aria-label="Task list"
       className="flex-1 overflow-y-auto [overflow-anchor:none] px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
     >
-      {filteredTasks.length === 0 ? (
+      {filteredTasks.length === 0 && settledTasks.length === 0 ? (
         <div className="h-48 flex flex-col items-center justify-center text-zinc-600 text-sm">
           <p className="font-medium">No tasks here.</p>
           <p className="text-xs text-zinc-700 mt-1">Enjoy your clear day!</p>
         </div>
-      ) : enableReorder ? (
-        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          {renderRows(SortableTaskRow)}
-        </SortableContext>
       ) : (
-        renderRows(TaskRow, { enableDrag: false })
+        <>
+          {filteredTasks.length > 0 ? (
+            enableReorder ? (
+              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                {renderRows(SortableTaskRow)}
+              </SortableContext>
+            ) : (
+              renderRows(TaskRow, { enableDrag: false })
+            )
+          ) : null}
+          <SettledSection
+            tasks={settledTasks}
+            expanded={settledExpanded}
+            selectedIds={selectedIds}
+            selectedTaskId={selectedTaskId}
+            onToggle={onToggleSettled}
+            onSelectTask={onSelectTask}
+            onUpdateStatus={onUpdateStatus}
+            onPermanentDelete={onPermanentDelete}
+          />
+        </>
       )}
     </div>
   );

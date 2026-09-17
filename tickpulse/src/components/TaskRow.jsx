@@ -5,8 +5,10 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowUturnLeftIcon,
   Bars3Icon,
+  CheckCircleIcon,
   NoSymbolIcon,
   TrashIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 import { taskKey } from '@/lib/taskListReorder';
 
@@ -40,9 +42,57 @@ export default function TaskRow({
   onPermanentDelete,
 }) {
   const isDone = task.status === 'completed';
-  const isTrash = task.status === 'cancelled' || task.status === 'deleted';
+  const isCancelled = task.status === 'cancelled';
+  const isDeleted = task.status === 'deleted';
+  const isTrash = isCancelled || isDeleted;
   const rowDragHandle = enableDrag && isSelected && !isOverlay ? dragHandle : undefined;
-  const iconDragHandle = enableDrag && !isSelected && !isOverlay ? dragHandle : undefined;
+  const iconDragHandle = enableDrag && !isOverlay ? dragHandle : undefined;
+
+  let statusControl;
+  if (isDone) {
+    statusControl = (
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'pending'); }}
+        className="flex-shrink-0 text-zinc-400 hover:text-zinc-300 p-0.5"
+        title="Restore Task"
+        aria-label="Completed"
+      >
+        <CheckCircleIcon className="w-4 h-4" />
+      </button>
+    );
+  } else if (isCancelled) {
+    statusControl = (
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'pending'); }}
+        className="flex-shrink-0 text-orange-400 hover:text-orange-300 p-0.5"
+        title="Restore Task"
+        aria-label="Won't Do"
+      >
+        <XCircleIcon className="w-4 h-4" />
+      </button>
+    );
+  } else if (isDeleted) {
+    statusControl = (
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'pending'); }}
+        className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
+        title="Restore Task"
+      >
+        <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
+      </button>
+    );
+  } else {
+    statusControl = (
+      <button
+        onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'completed'); }}
+        className="flex-shrink-0 p-0.5"
+        aria-label="Mark complete"
+        title="Mark complete"
+      >
+        <span className={`block mx-0.5 w-3 h-3 rounded-full border transition-colors ${getPriorityClass(task.priority)}`} />
+      </button>
+    );
+  }
 
   return (
     <div
@@ -62,36 +112,7 @@ export default function TaskRow({
       } ${isDragging && !isOverlay ? 'opacity-0' : ''} ${isOverlay ? 'pointer-events-none' : ''}`}
     >
       <div className="flex items-center space-x-3 min-w-0 flex-1">
-        {enableDrag ? (
-          <div
-            {...iconDragHandle}
-            onClick={(e) => e.stopPropagation()}
-            className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
-              isSelected || isOverlay
-                ? 'opacity-100'
-                : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
-            }`}
-          >
-            <Bars3Icon className="w-4 h-4" />
-          </div>
-        ) : null}
-
-        {!isTrash ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, isDone ? 'pending' : 'completed'); }}
-            className={`w-4 h-4 rounded border flex-shrink-0 transition-colors flex items-center justify-center ${getPriorityClass(task.priority)}`}
-          >
-            {task.status === 'completed' && <span className="w-1.5 h-1.5 bg-zinc-400 rounded-sm" />}
-          </button>
-        ) : (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'pending'); }}
-            className="text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0"
-            title="Restore Task"
-          >
-            <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
-          </button>
-        )}
+        {statusControl}
 
         <div className="flex flex-col min-w-0 flex-1">
           <span className={`text-sm truncate ${task.status === 'completed' ? 'line-through text-zinc-600' :
@@ -105,35 +126,51 @@ export default function TaskRow({
         </div>
       </div>
 
-      <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 ml-4 flex-shrink-0 transition-opacity duration-100">
-        {!isTrash ? (
-          <>
-            {task.status !== 'completed' && task.status !== 'cancelled' && (
+      <div className="flex items-center flex-shrink-0 ml-4">
+        <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 transition-opacity duration-100">
+          {!isTrash ? (
+            <>
+              {task.status !== 'completed' && task.status !== 'cancelled' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'cancelled'); }}
+                  className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                  title="Won't Do"
+                >
+                  <NoSymbolIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
-                onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'cancelled'); }}
-                className="p-1 text-zinc-500 hover:text-orange-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-                title="Won't Do"
+                onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'deleted'); }}
+                className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                title="Move to Trash"
               >
-                <NoSymbolIcon className="w-3.5 h-3.5" />
+                <TrashIcon className="w-3.5 h-3.5" />
               </button>
-            )}
+            </>
+          ) : (
             <button
-              onClick={(e) => { e.stopPropagation(); onUpdateStatus(task, 'deleted'); }}
-              className="p-1 text-zinc-500 hover:text-red-400 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-              title="Move to Trash"
+              onClick={(e) => { e.stopPropagation(); onPermanentDelete(task); }}
+              className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+              title="Delete Permanently"
             >
               <TrashIcon className="w-3.5 h-3.5" />
             </button>
-          </>
-        ) : (
-          <button
-            onClick={(e) => { e.stopPropagation(); onPermanentDelete(task); }}
-            className="p-1 text-zinc-600 hover:text-red-500 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
-            title="Delete Permanently"
+          )}
+        </div>
+        {enableDrag ? (
+          <div
+            {...iconDragHandle}
+            onClick={(e) => e.stopPropagation()}
+            className={`text-zinc-600 hover:text-zinc-400 p-0.5 flex-shrink-0 ${
+              isSelected || isOverlay
+                ? 'opacity-100 cursor-grab active:cursor-grabbing'
+                : 'cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity duration-100'
+            }`}
+            title="Drag to reorder"
           >
-            <TrashIcon className="w-3.5 h-3.5" />
-          </button>
-        )}
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        ) : null}
       </div>
       {isOverlay && overlayCount > 1 ? (
         <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-white text-[11px] font-semibold leading-5 text-center shadow">

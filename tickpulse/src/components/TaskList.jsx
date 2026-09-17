@@ -13,11 +13,13 @@ import {
   shouldRequestReorder,
   taskKey,
 } from '@/lib/taskListReorder';
+import { sortByUpdatedAtDesc, splitCategoryTasks } from '@/lib/taskListSections';
 import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import TaskVirtualList from './TaskVirtualList';
 import { formatToLocalDateStr } from './TaskRow';
 
 const CREATED_AT_SORTED_FILTERS = ['all', 'today', 'next7'];
+const UPDATED_AT_SORTED_FILTERS = ['completed', 'cancelled', 'deleted'];
 
 function createdAtMs(task) {
   const raw = task?.created_at || task?.createdAt;
@@ -50,6 +52,7 @@ export default function TaskList() {
   const [isEditingHeader, setIsEditingHeader] = useState(false);
   const [editHeaderName, setEditHeaderName] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
+  const [settledExpanded, setSettledExpanded] = useState(false);
 
   const currentCategory = categories.find(cat => cat.id === selectedCategoryId);
   let headerTitle = '';
@@ -93,7 +96,7 @@ export default function TaskList() {
   const filteredTasks = tasks.filter(task => {
     const taskDateStr = formatToLocalDateStr(task.deadline);
     if (selectedView === 'category') {
-      return task.category_id === selectedCategoryId && task.status !== 'deleted' && task.status !== 'cancelled';
+      return task.category_id === selectedCategoryId && task.status !== 'deleted';
     }
     if (selectedView === 'filter') {
       switch (activeFilter) {
@@ -117,12 +120,24 @@ export default function TaskList() {
 
   const isCreatedAtSortedView =
     selectedView === 'filter' && CREATED_AT_SORTED_FILTERS.includes(activeFilter);
-  const visibleTasks = isCreatedAtSortedView
+  const isUpdatedAtSortedView =
+    selectedView === 'filter' && UPDATED_AT_SORTED_FILTERS.includes(activeFilter);
+  const isCategoryView = selectedView === 'category';
+  const { pending: categoryPending, settled: categorySettled } = isCategoryView
+    ? splitCategoryTasks(filteredTasks)
+    : { pending: filteredTasks, settled: [] };
+  const pendingTasks = isCreatedAtSortedView
     ? sortTasksByCreatedAtDesc(filteredTasks)
-    : filteredTasks;
-  const enableReorder = !isCreatedAtSortedView;
+    : isUpdatedAtSortedView
+      ? sortByUpdatedAtDesc(filteredTasks)
+      : (isCategoryView ? categoryPending : filteredTasks);
+  const settledTasks = isCategoryView ? categorySettled : [];
+  const enableReorder = !isCreatedAtSortedView && !isUpdatedAtSortedView;
+  const selectionTasks = settledExpanded
+    ? [...pendingTasks, ...settledTasks]
+    : pendingTasks;
 
-  const visibleIdsKey = visibleTasks.map(taskKey).filter(Boolean).join(',');
+  const visibleIdsKey = selectionTasks.map(taskKey).filter(Boolean).join(',');
   const viewKey = `${selectedView}:${selectedCategoryId}:${activeFilter}`;
   const viewKeyRef = useRef(viewKey);
 
@@ -130,6 +145,7 @@ export default function TaskList() {
     if (viewKeyRef.current !== viewKey) {
       viewKeyRef.current = viewKey;
       setSelectedIds([]);
+      setSettledExpanded(false);
       return;
     }
     const visible = new Set(visibleIdsKey ? visibleIdsKey.split(',') : []);
@@ -151,26 +167,26 @@ export default function TaskList() {
     if (!enableReorder || !activeId) return;
 
     const { sourceIndex, destIndex } = resolveDropDataIndices(
-      visibleTasks,
+      pendingTasks,
       activeId,
       overId,
       fallbackIndex,
     );
     if (sourceIndex < 0 || destIndex < 0 || sourceIndex === destIndex) return;
 
-    const movingKeys = getMovingKeys(visibleTasks, selectedIds, activeId);
+    const movingKeys = getMovingKeys(pendingTasks, selectedIds, activeId);
     const reorderedFiltered = moveSelectedBlock(
-      visibleTasks,
+      pendingTasks,
       movingKeys,
       sourceIndex,
       destIndex,
     );
-    if (!shouldRequestReorder(visibleTasks, reorderedFiltered)) return;
+    if (!shouldRequestReorder(pendingTasks, reorderedFiltered)) return;
 
     const previous = tasks;
     dispatch({
       type: 'SET_TASKS',
-      payload: applyFilteredOrderToAllTasks(tasks, visibleTasks, reorderedFiltered),
+      payload: applyFilteredOrderToAllTasks(tasks, pendingTasks, reorderedFiltered),
     });
 
     try {
@@ -184,7 +200,7 @@ export default function TaskList() {
 
   const handleSelectTask = (e, task) => {
     const next = applyTaskClick({
-      filteredTasks: visibleTasks,
+      filteredTasks: selectionTasks,
       selectedIds,
       selectedTaskId,
       task,
@@ -227,7 +243,13 @@ export default function TaskList() {
     if (!targetId) { showError('Task ID missing'); return; }
     try {
       await taskApi.updateTask(targetId, { status: newStatus });
-      dispatch({ type: 'UPDATE_TASK', payload: { id: targetId, updates: { status: newStatus } } });
+      dispatch({
+        type: 'UPDATE_TASK',
+        payload: {
+          id: targetId,
+          updates: { status: newStatus, updated_at: new Date().toISOString() },
+        },
+      });
       showSuccess(`Task updated`);
     } catch (error) {
       showError('Failed to update task status');
@@ -295,7 +317,9 @@ export default function TaskList() {
 
       <TaskVirtualList
         key={viewKey}
-        filteredTasks={visibleTasks}
+        filteredTasks={pendingTasks}
+        settledTasks={settledTasks}
+        settledExpanded={settledExpanded}
         selectedIds={selectedIds}
         selectedTaskId={selectedTaskId}
         enableReorder={enableReorder}
@@ -304,6 +328,7 @@ export default function TaskList() {
         onUpdateStatus={handleUpdateStatus}
         onPermanentDelete={handlePermanentDelete}
         onReorder={handleReorder}
+        onToggleSettled={() => setSettledExpanded((open) => !open)}
       />
     </div>
   );
