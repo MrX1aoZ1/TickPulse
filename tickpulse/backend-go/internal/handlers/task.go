@@ -284,20 +284,33 @@ func (h *TaskHandler) applyReorder(userID int, ids []string, prevID, nextID stri
 		if id == "" || moving[id] {
 			return nil, &reorderError{Status: 400, Message: "duplicate or empty task id"}
 		}
-		if _, err := h.getTask(id, userID); err == sql.ErrNoRows {
-			return nil, &reorderError{Status: 404, Message: "Task not found or unauthorized"}
-		} else if err != nil {
-			return nil, err
-		}
 		moving[id] = true
 		clean = append(clean, id)
 	}
 
-	prevRank, err := h.neighborSortOrder(userID, prevID, moving)
+	lookup := make([]string, 0, len(clean)+2)
+	lookup = append(lookup, clean...)
+	if prevID != "" {
+		lookup = append(lookup, prevID)
+	}
+	if nextID != "" {
+		lookup = append(lookup, nextID)
+	}
+	found, err := h.getTaskRanks(userID, lookup)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range clean {
+		if _, ok := found[id]; !ok {
+			return nil, &reorderError{Status: 404, Message: "Task not found or unauthorized"}
+		}
+	}
+
+	prevRank, err := neighborRankFrom(prevID, moving, found)
 	if err != nil {
 		return nil, &reorderError{Status: 400, Message: err.Error()}
 	}
-	nextRank, err := h.neighborSortOrder(userID, nextID, moving)
+	nextRank, err := neighborRankFrom(nextID, moving, found)
 	if err != nil {
 		return nil, &reorderError{Status: 400, Message: err.Error()}
 	}
@@ -332,28 +345,53 @@ func (h *TaskHandler) applyReorder(userID int, ids []string, prevID, nextID stri
 	return orders, nil
 }
 
-func derefTaskID(id *string) string {
-	if id == nil {
-		return ""
-	}
-	return strings.TrimSpace(*id)
-}
-
-func (h *TaskHandler) neighborSortOrder(userID int, neighborID string, moving map[string]bool) (string, error) {
+func neighborRankFrom(neighborID string, moving map[string]bool, found map[string]string) (string, error) {
 	if neighborID == "" {
 		return "", nil
 	}
 	if moving[neighborID] {
 		return "", fmt.Errorf("neighbor cannot be one of the moved tasks")
 	}
-	task, err := h.getTask(neighborID, userID)
-	if err == sql.ErrNoRows {
+	rank, ok := found[neighborID]
+	if !ok {
 		return "", fmt.Errorf("neighbor task not found")
 	}
-	if err != nil {
-		return "", err
+	return rank, nil
+}
+
+func (h *TaskHandler) getTaskRanks(userID int, ids []string) (map[string]string, error) {
+	out := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
 	}
-	return task.SortOrder, nil
+	query, args, err := sqlx.In(
+		`SELECT id, sort_order FROM tasks WHERE user_id = ? AND id IN (?)`,
+		userID, ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	query = h.DB.Rebind(query)
+
+	type row struct {
+		ID        string `db:"id"`
+		SortOrder string `db:"sort_order"`
+	}
+	var rows []row
+	if err := h.DB.Select(&rows, query, args...); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ID] = r.SortOrder
+	}
+	return out, nil
+}
+
+func derefTaskID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return strings.TrimSpace(*id)
 }
 
 func (h *TaskHandler) nextRankForUser(userID int) (string, error) {
