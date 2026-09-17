@@ -67,7 +67,37 @@ export default function TaskDetail() {
         updateTaskField('content', sanitizedContent);
       }
     }
-  }, [selectedTaskId]); 
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await taskApi.getTask(selectedTaskId);
+        if (cancelled || !full) return;
+        dispatch({
+          type: 'UPDATE_TASK',
+          payload: { id: selectedTaskId, updates: full },
+        });
+      } catch (error) {
+        console.error('Failed to load task details:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskId, dispatch]);
+
+  useEffect(() => {
+    if (!editor || !selectedTask || selectedTask.content == null) return;
+    const next = selectedTask.content || '';
+    const html = editor.getHTML();
+    const current = html === '<p></p>' ? '' : html;
+    if (current !== next) {
+      editor.commands.setContent(next, false);
+    }
+  }, [editor, selectedTaskId, selectedTask?.content]);
 
   // 2. 當選中的任務切換時，執行瞬間防殘影跳轉
   useEffect(() => {

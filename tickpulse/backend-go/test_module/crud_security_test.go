@@ -130,6 +130,42 @@ func TestTaskCRUDAndOwnership(t *testing.T) {
 		}
 	})
 
+	t.Run("list_omits_content", func(t *testing.T) {
+		notes := "<p>secret notes</p>"
+		resp := owner.do(http.MethodPut, "/api/tasks/"+taskID, map[string]any{
+			"content": notes,
+		})
+		updated := decodeJSON[map[string]any](t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("update content status %d payload %v", resp.StatusCode, updated)
+		}
+
+		list := owner.do(http.MethodGet, "/api/tasks", nil)
+		tasks := decodeJSON[[]map[string]any](t, list)
+		if list.StatusCode != http.StatusOK {
+			t.Fatalf("list status %d", list.StatusCode)
+		}
+		var listed map[string]any
+		for _, task := range tasks {
+			if task["id"] == taskID {
+				listed = task
+				break
+			}
+		}
+		if listed == nil {
+			t.Fatalf("task %s missing from list", taskID)
+		}
+		if listed["content"] != nil {
+			t.Fatalf("list payload included content: %v", listed["content"])
+		}
+
+		detailResp := owner.do(http.MethodGet, "/api/tasks/"+taskID, nil)
+		detail := decodeJSON[map[string]any](t, detailResp)
+		if detailResp.StatusCode != http.StatusOK || detail["content"] != notes {
+			t.Fatalf("detail status %d content %v", detailResp.StatusCode, detail["content"])
+		}
+	})
+
 	t.Run("intruder_cannot_update", func(t *testing.T) {
 		resp := intruder.do(http.MethodPut, "/api/tasks/"+taskID, map[string]any{
 			"task_name": "Hijacked",

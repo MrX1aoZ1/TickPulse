@@ -181,6 +181,11 @@ export const taskApi = {
       method: 'GET',
       credentials: 'include',
     }),
+  getTask: async (taskId) =>
+    fetchWithAuth(`/api/tasks/${taskId}`, {
+      method: 'GET',
+      credentials: 'include',
+    }),
   createTask: async (taskData) =>
     fetchWithAuth('/api/tasks', {
       method: 'POST',
@@ -501,15 +506,26 @@ const taskReducer = (state, action) => {
       return { ...state, selectedView: action.payload };
     case 'SET_FILTER':
       return { ...state, activeFilter: action.payload };
-    case 'SET_TASKS':
+    case 'SET_TASKS': {
+      const previous = new Map(
+        (state.tasks || []).map((task) => [String(task.id || task.taskId), task])
+      );
       return {
         ...state,
         // 與分類相同：拖曳後維持 array 順序，只正規化 sort_order 字串，不要重新排序。
-        tasks: (action.payload || []).map((task) => ({
-          ...task,
-          sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
-        })),
+        tasks: (action.payload || []).map((task) => {
+          const prev = previous.get(String(task.id || task.taskId));
+          const next = {
+            ...task,
+            sort_order: task.sort_order != null ? String(task.sort_order) : '0|0i0000:',
+          };
+          if (prev && next.content == null && prev.content != null) {
+            next.content = prev.content;
+          }
+          return next;
+        }),
       };
+    }
     default:
       return state;
   }

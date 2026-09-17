@@ -13,6 +13,10 @@ import (
 	"tickpulse/backend-go/internal/models"
 )
 
+const taskListColumns = `id, user_id, category_id, task_name, status, priority,
+	deadline, start_time, end_time, is_all_day, reminder_type, reminder_time,
+	is_recurring, recurrence_rule, sort_order, created_at, updated_at`
+
 const taskColumns = `id, user_id, category_id, task_name, content, status, priority,
 	deadline, start_time, end_time, is_all_day, reminder_type, reminder_time,
 	is_recurring, recurrence_rule, sort_order, created_at, updated_at`
@@ -61,7 +65,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	tasks := make([]models.Task, 0)
 	err := h.DB.Select(&tasks, `
-		SELECT `+taskColumns+`
+		SELECT `+taskListColumns+`
 		FROM tasks
 		WHERE user_id = ?
 		ORDER BY sort_order ASC, created_at DESC`, user.ID)
