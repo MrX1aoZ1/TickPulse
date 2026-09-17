@@ -123,7 +123,13 @@ func seedRandomCategories(database *sqlx.DB, rng *rand.Rand, userID, n int) ([]s
 
 func seedRandomTasks(database *sqlx.DB, rng *rand.Rand, userID int, categoryIDs []string, n int) error {
 	now := time.Now()
-	lastByCat := map[string]string{}
+	lastRank := ""
+	var existing string
+	if err := database.Get(&existing, `
+		SELECT sort_order FROM Tasks WHERE user_id = ?
+		ORDER BY sort_order DESC LIMIT 1`, userID); err == nil {
+		lastRank = existing
+	}
 	for i := 0; i < n; i++ {
 		id := uuid.NewString()
 		categoryID := pick(rng, categoryIDs)
@@ -134,8 +140,8 @@ func seedRandomTasks(database *sqlx.DB, rng *rand.Rand, userID int, categoryIDs 
 		isAllDay := rng.IntN(2) == 0
 		isRecurring := rng.IntN(4) == 0
 		reminderType := rng.IntN(2)
-		sortOrder := models.NextCategoryRank(lastByCat[categoryID])
-		lastByCat[categoryID] = sortOrder
+		lastRank = models.NextCategoryRank(lastRank)
+		sortOrder := lastRank
 
 		var deadline, startTime, endTime, reminderTime any
 		dayOffset := rng.IntN(21) - 7
