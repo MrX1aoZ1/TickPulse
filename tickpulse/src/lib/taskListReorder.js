@@ -83,6 +83,11 @@ export function taskOrderSignature(list) {
   return list.map(taskKey).join(',');
 }
 
+/** 順序沒變就不要打 PUT /api/tasks/reorder。 */
+export function shouldRequestReorder(before, after) {
+  return taskOrderSignature(before) !== taskOrderSignature(after);
+}
+
 /**
  * 把 movingKeys 這一段（相對順序不變）插到 destIndex 指向的位置。
  * sourceIndex / destIndex 必須是 filteredTasks 的 dataIndex，不是 virtualizer window index。

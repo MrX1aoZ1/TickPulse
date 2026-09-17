@@ -14,6 +14,7 @@ const {
   moveSelectedBlock,
   resolveDropDataIndices,
   resolveOverDataIndex,
+  shouldRequestReorder,
   taskOrderSignature,
 } = await import(pathToFileURL(join(tmp, 'taskListReorder.mjs')).href);
 
@@ -70,6 +71,18 @@ assert(resolveDropDataIndices(list, 't5', null, 8).destIndex === 8, 'dest uses f
 
 const same = moveSelectedBlock(list, ['t2'], 2, 2);
 assert(taskOrderSignature(same) === taskOrderSignature(list), 'same position is a no-op');
+assert(!shouldRequestReorder(list, same), 'same position does not request the reorder API');
+assert(shouldRequestReorder(list, block), 'an actual block move should request the API');
+
+const toFront = moveSelectedBlock(list, ['t9'], 9, 0);
+const frontPayload = getReorderPayload(toFront, ['t9']);
+assert(frontPayload.prev_id == null, 'insert at start has no prev_id');
+assert(frontPayload.next_id === 't0', 'insert at start next_id is the old first row');
+
+const toEnd = moveSelectedBlock(list, ['t0'], 0, 9);
+const endPayload = getReorderPayload(toEnd, ['t0']);
+assert(endPayload.prev_id === 't9', 'insert at end prev_id is the old last row');
+assert(endPayload.next_id == null, 'insert at end has no next_id');
 
 rmSync(tmp, { recursive: true, force: true });
 if (failed) process.exit(1);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -75,7 +75,7 @@ export default function TaskVirtualList({
   const virtualizer = useVirtualizer({
     count: filteredTasks.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => estimateTaskSize(filteredTasks[index]),
+    estimateSize: (index) => estimateTaskSize(filteredTasks[index]) || DEFAULT_ROW_SIZE,
     overscan: activeId ? DRAG_OVERSCAN : IDLE_OVERSCAN,
     getItemKey: (index) => taskKey(filteredTasks[index]) || index,
     measureElement:
@@ -84,16 +84,22 @@ export default function TaskVirtualList({
         : undefined,
   });
 
-  useEffect(() => {
+  const itemKeys = filteredTasks.map(taskKey).join(',');
+  useLayoutEffect(() => {
     const node = parentRef.current;
     if (node) node.scrollTop = 0;
     if (filteredTasks.length > 0) {
-      virtualizer.scrollToIndex(0);
+      virtualizer.scrollToIndex(0, { align: 'start' });
     }
-    virtualizer.measure();
-    // Only reset when the view/filter/category changes, not on every virtualizer identity.
+    // Parent also remounts this list with key={viewKey}; this covers same-instance resets.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollResetKey]);
+
+  useLayoutEffect(() => {
+    virtualizer.measure();
+    // Re-measure after add / complete / delete / reorder so leftover spacers don't leave holes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemKeys, filteredTasks.length]);
 
   const activeTask = activeId
     ? filteredTasks.find((task) => taskKey(task) === activeId)
@@ -200,7 +206,7 @@ export default function TaskVirtualList({
       ref={parentRef}
       role="list"
       aria-label="Task list"
-      className="flex-1 overflow-y-auto px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
+      className="flex-1 overflow-y-auto [overflow-anchor:none] px-6 py-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
     >
       {filteredTasks.length === 0 ? (
         <div className="h-48 flex flex-col items-center justify-center text-zinc-600 text-sm">

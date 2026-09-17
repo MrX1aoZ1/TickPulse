@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTasks, taskApi } from '@/context/TaskContext';
 import { useToast } from '@/context/ToastContext';
 import { applyTaskClick } from '@/lib/taskListSelection';
@@ -10,7 +10,8 @@ import {
   getReorderPayload,
   moveSelectedBlock,
   resolveDropDataIndices,
-  taskOrderSignature,
+  shouldRequestReorder,
+  taskKey,
 } from '@/lib/taskListReorder';
 import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import TaskVirtualList from './TaskVirtualList';
@@ -121,9 +122,22 @@ export default function TaskList() {
     : filteredTasks;
   const enableReorder = !isCreatedAtSortedView;
 
+  const visibleIdsKey = visibleTasks.map(taskKey).filter(Boolean).join(',');
+  const viewKey = `${selectedView}:${selectedCategoryId}:${activeFilter}`;
+  const viewKeyRef = useRef(viewKey);
+
   useEffect(() => {
-    setSelectedIds([]);
-  }, [selectedView, selectedCategoryId, activeFilter]);
+    if (viewKeyRef.current !== viewKey) {
+      viewKeyRef.current = viewKey;
+      setSelectedIds([]);
+      return;
+    }
+    const visible = new Set(visibleIdsKey ? visibleIdsKey.split(',') : []);
+    setSelectedIds((ids) => {
+      const next = ids.filter((id) => visible.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [viewKey, visibleIdsKey]);
 
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -151,7 +165,7 @@ export default function TaskList() {
       sourceIndex,
       destIndex,
     );
-    if (taskOrderSignature(visibleTasks) === taskOrderSignature(reorderedFiltered)) return;
+    if (!shouldRequestReorder(visibleTasks, reorderedFiltered)) return;
 
     const previous = tasks;
     dispatch({
@@ -280,11 +294,12 @@ export default function TaskList() {
       ) : null}
 
       <TaskVirtualList
+        key={viewKey}
         filteredTasks={visibleTasks}
         selectedIds={selectedIds}
         selectedTaskId={selectedTaskId}
         enableReorder={enableReorder}
-        scrollResetKey={`${selectedView}:${selectedCategoryId}:${activeFilter}`}
+        scrollResetKey={viewKey}
         onSelectTask={handleSelectTask}
         onUpdateStatus={handleUpdateStatus}
         onPermanentDelete={handlePermanentDelete}
