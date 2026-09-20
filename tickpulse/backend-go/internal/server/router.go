@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -37,6 +38,7 @@ func NewRouter(cfg config.Config, database *sqlx.DB) *gin.Engine {
 		MaxAge:   int((24 * time.Hour).Seconds()),
 		HttpOnly: true,
 		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
 	})
 	r.Use(sessions.Sessions("connect.sid", store))
 
@@ -49,6 +51,8 @@ func NewRouter(cfg config.Config, database *sqlx.DB) *gin.Engine {
 		auth.POST("/login", middleware.CheckNotAuthenticated(), authH.Login)
 		auth.GET("/google", authH.GoogleLogin)
 		auth.GET("/google/callback", authH.GoogleCallback)
+		auth.GET("/github", authH.GitHubLogin)
+		auth.GET("/github/callback", authH.GitHubCallback)
 		auth.POST("/logout", authH.Logout)
 	}
 
