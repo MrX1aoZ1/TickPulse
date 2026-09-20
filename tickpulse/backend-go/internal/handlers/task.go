@@ -64,11 +64,22 @@ func (h *TaskHandler) getTask(id string, userID int) (*models.Task, error) {
 func (h *TaskHandler) GetTasks(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	tasks := make([]models.Task, 0)
-	err := h.DB.Select(&tasks, `
-		SELECT `+taskListColumns+`
-		FROM tasks
-		WHERE user_id = ?
-		ORDER BY sort_order ASC, created_at DESC`, user.ID)
+	categoryID := strings.TrimSpace(c.Query("category_id"))
+
+	var err error
+	if categoryID != "" {
+		err = h.DB.Select(&tasks, `
+			SELECT `+taskListColumns+`
+			FROM tasks FORCE INDEX (idx_tasks_user_category_sort)
+			WHERE user_id = ? AND category_id = ?
+			ORDER BY sort_order ASC`, user.ID, categoryID)
+	} else {
+		err = h.DB.Select(&tasks, `
+			SELECT `+taskListColumns+`
+			FROM tasks
+			WHERE user_id = ?
+			ORDER BY sort_order ASC, created_at DESC`, user.ID)
+	}
 	if err != nil {
 		c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})
 		return

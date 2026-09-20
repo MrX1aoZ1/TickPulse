@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useToast } from './ToastContext';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -51,9 +52,11 @@ const TaskContext = createContext();
  */
 export function TaskProvider({ children }) {
   const [state, dispatch] = useReducer(taskReducer, initialState);
-  const { showError } = useToast(); // Hook for displaying error notifications
+  const { showError } = useToast();
+  const pathname = usePathname();
+  const calendarNeedsAll = Boolean(pathname?.includes('/calendar'));
+  const categoryKey = state.selectedView === 'category' ? (state.selectedCategoryId || '') : '';
 
-  // Effect to load state from localStorage on component mount
   useEffect(() => {
     const savedState = loadState();
     if (savedState) {
@@ -62,21 +65,14 @@ export function TaskProvider({ children }) {
 
     const fetchInitialData = async () => {
       try {
-        const tasks = await taskApi.getTasks();
-        if (Array.isArray(tasks)) {
-          dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
-        }
-
         const categories = await taskApi.getAllCategories();
         if (Array.isArray(categories)) {
-          // 🎯 修正：必須完整保留 sort_order，並強轉字串，防止 null/undefined
           const transformedCategories = categories.map(cat => ({
             id: cat.id || cat.category_id,
             name: cat.category_name || cat.name,
             sort_order: cat.sort_order ? String(cat.sort_order) : '0|0i0000:'
           }));
 
-          // 🎯 核心修復：在送入全域狀態前，強制進行 LexoRank 字串排序
           transformedCategories.sort((a, b) => a.sort_order.localeCompare(b.sort_order));
 
           dispatch({
@@ -98,19 +94,42 @@ export function TaskProvider({ children }) {
     fetchInitialData();
   }, [showError]);
 
-  // Effect to save state to localStorage whenever the state changes
   useEffect(() => {
-    saveState(state); // Persist current state to localStorage
-  }, [state]); // Dependency: state
+    if (!calendarNeedsAll && state.selectedView === 'category' && !categoryKey) {
+      return undefined;
+    }
+    let cancelled = false;
+    const categoryId = !calendarNeedsAll && state.selectedView === 'category'
+      ? categoryKey
+      : undefined;
+    (async () => {
+      try {
+        const tasks = await taskApi.getTasks({ categoryId });
+        if (!cancelled && Array.isArray(tasks)) {
+          dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load tasks:', error);
+          showError('Failed to load tasks');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.selectedView, categoryKey, calendarNeedsAll, showError]);
 
-  /**
-   * Function to refresh the list of tasks from the backend.
-   * Useful after operations that might change tasks on the server outside of direct client actions.
-   */
+  useEffect(() => {
+    saveState(state);
+  }, [state]);
+
   const refreshTasks = async () => {
     try {
-      // 🚨 關鍵修正：刪除了對 localStorage token 的依賴
-      const tasks = await taskApi.getTasks();
+      const categoryId = !calendarNeedsAll && state.selectedView === 'category'
+        ? state.selectedCategoryId
+        : undefined;
+      const tasks = await taskApi.getTasks({ categoryId });
       if (Array.isArray(tasks)) {
         dispatch({ type: 'SET_TASKS', payload: normalizeTasks(tasks) });
       }
@@ -176,11 +195,15 @@ async function fetchWithAuth(endpoint, options = {}) {
  * @description An object containing functions for interacting with the task-related backend API endpoints.
  */
 export const taskApi = {
-  getTasks: async () =>
-    fetchWithAuth('/api/tasks', {
+  getTasks: async ({ categoryId } = {}) => {
+    const query = categoryId
+      ? `?category_id=${encodeURIComponent(categoryId)}`
+      : '';
+    return fetchWithAuth(`/api/tasks${query}`, {
       method: 'GET',
       credentials: 'include',
-    }),
+    });
+  },
   getTask: async (taskId) =>
     fetchWithAuth(`/api/tasks/${taskId}`, {
       method: 'GET',
