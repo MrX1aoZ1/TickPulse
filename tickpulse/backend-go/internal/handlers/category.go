@@ -48,11 +48,11 @@ func (h *CategoryHandler) GetTasksByCategory(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	tasks := make([]models.Task, 0)
 	err := h.DB.Select(&tasks, `
-		SELECT `+taskColumns+`
-		FROM tasks
-		WHERE category_id = ? AND user_id = ?
+		SELECT `+taskListColumns+`
+		FROM tasks FORCE INDEX (idx_tasks_user_category_sort)
+		WHERE user_id = ? AND category_id = ?
 		ORDER BY sort_order ASC`,
-		c.Param("categoryId"), user.ID,
+		user.ID, c.Param("categoryId"),
 	)
 	if err != nil {
 		c.JSON(500, gin.H{"message": "Server error", "error": err.Error()})

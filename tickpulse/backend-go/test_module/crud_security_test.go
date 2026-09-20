@@ -130,6 +130,88 @@ func TestTaskCRUDAndOwnership(t *testing.T) {
 		}
 	})
 
+	t.Run("list_omits_content", func(t *testing.T) {
+		notes := "<p>secret notes</p>"
+		resp := owner.do(http.MethodPut, "/api/tasks/"+taskID, map[string]any{
+			"content": notes,
+		})
+		updated := decodeJSON[map[string]any](t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("update content status %d payload %v", resp.StatusCode, updated)
+		}
+
+		list := owner.do(http.MethodGet, "/api/tasks", nil)
+		tasks := decodeJSON[[]map[string]any](t, list)
+		if list.StatusCode != http.StatusOK {
+			t.Fatalf("list status %d", list.StatusCode)
+		}
+		var listed map[string]any
+		for _, task := range tasks {
+			if task["id"] == taskID {
+				listed = task
+				break
+			}
+		}
+		if listed == nil {
+			t.Fatalf("task %s missing from list", taskID)
+		}
+		if listed["content"] != nil {
+			t.Fatalf("list payload included content: %v", listed["content"])
+		}
+
+		detailResp := owner.do(http.MethodGet, "/api/tasks/"+taskID, nil)
+		detail := decodeJSON[map[string]any](t, detailResp)
+		if detailResp.StatusCode != http.StatusOK || detail["content"] != notes {
+			t.Fatalf("detail status %d content %v", detailResp.StatusCode, detail["content"])
+		}
+	})
+
+	t.Run("list_filters_by_category", func(t *testing.T) {
+		inbox := inboxID(ownerUser.User.ID)
+		catResp := owner.do(http.MethodPost, "/api/categories", map[string]string{
+			"name": "Work",
+		})
+		createdCat := decodeJSON[map[string]any](t, catResp)
+		if catResp.StatusCode != http.StatusCreated {
+			t.Fatalf("create category status %d payload %v", catResp.StatusCode, createdCat)
+		}
+		workID, _ := createdCat["category_id"].(string)
+		if workID == "" {
+			t.Fatalf("missing category_id: %v", createdCat)
+		}
+
+		inWork := owner.createTask("In Work", map[string]any{"category_id": workID})
+		workTaskID, _ := inWork["id"].(string)
+		inInbox := owner.createTask("In Inbox", map[string]any{"category_id": inbox})
+		inboxTaskID, _ := inInbox["id"].(string)
+
+		listed := owner.do(http.MethodGet, "/api/tasks?category_id="+workID, nil)
+		tasks := decodeJSON[[]map[string]any](t, listed)
+		if listed.StatusCode != http.StatusOK {
+			t.Fatalf("filtered list status %d", listed.StatusCode)
+		}
+		ids := make(map[string]bool, len(tasks))
+		for _, task := range tasks {
+			if task["category_id"] != workID {
+				t.Fatalf("filtered list leaked other category: %v", task)
+			}
+			id, _ := task["id"].(string)
+			ids[id] = true
+		}
+		if !ids[workTaskID] {
+			t.Fatalf("work task missing from filtered list")
+		}
+		if ids[inboxTaskID] {
+			t.Fatalf("inbox task leaked into work filter")
+		}
+
+		all := owner.do(http.MethodGet, "/api/tasks", nil)
+		allTasks := decodeJSON[[]map[string]any](t, all)
+		if all.StatusCode != http.StatusOK || len(allTasks) <= len(tasks) {
+			t.Fatalf("unfiltered len %d filtered len %d", len(allTasks), len(tasks))
+		}
+	})
+
 	t.Run("intruder_cannot_update", func(t *testing.T) {
 		resp := intruder.do(http.MethodPut, "/api/tasks/"+taskID, map[string]any{
 			"task_name": "Hijacked",

@@ -8,7 +8,7 @@ type Task struct {
 	UserID         int        `db:"user_id" json:"user_id"`
 	CategoryID     *string    `db:"category_id" json:"category_id"`
 	TaskName       string     `db:"task_name" json:"task_name"`
-	Content        *string    `db:"content" json:"content"`
+	Content        *string    `db:"content" json:"content,omitempty"`
 	Status         string     `db:"status" json:"status"`
 	Priority       string     `db:"priority" json:"priority"`
 	Deadline       *time.Time `db:"deadline" json:"deadline"`

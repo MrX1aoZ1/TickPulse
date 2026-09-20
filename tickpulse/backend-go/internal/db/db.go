@@ -97,7 +97,8 @@ func EnsureTables(database *sqlx.DB) error {
 			category_name VARCHAR(255),
 			color VARCHAR(7) DEFAULT '#FFFFFF',
 			sort_order VARCHAR(255) DEFAULT '0|0i0000:',
-			FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+			FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
+			KEY idx_categories_user_sort (user_id, sort_order)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
 		`CREATE TABLE IF NOT EXISTS Tasks (
@@ -120,7 +121,9 @@ func EnsureTables(database *sqlx.DB) error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
-			FOREIGN KEY (category_id) REFERENCES Categories(id) ON DELETE SET NULL
+			FOREIGN KEY (category_id) REFERENCES Categories(id) ON DELETE SET NULL,
+			KEY idx_tasks_user_sort (user_id, sort_order),
+			KEY idx_tasks_user_category_sort (user_id, category_id, sort_order)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
 		`CREATE TABLE IF NOT EXISTS SubTasks (
@@ -148,6 +151,9 @@ func EnsureTables(database *sqlx.DB) error {
 		return err
 	}
 	if err := migrateTaskSortOrder(database); err != nil {
+		return err
+	}
+	if err := migrateListIndexes(database); err != nil {
 		return err
 	}
 	log.Println("All tables created or already exist")
@@ -220,5 +226,44 @@ func migrateTaskSortOrder(database *sqlx.DB) error {
 		}
 	}
 	log.Println("Migrated Tasks.sort_order to LexoRank VARCHAR(255)")
+	return nil
+}
+
+func migrateListIndexes(database *sqlx.DB) error {
+	indexes := []struct {
+		table   string
+		name    string
+		columns string
+	}{
+		{"Tasks", "idx_tasks_user_sort", "`user_id`, `sort_order`"},
+		{"Tasks", "idx_tasks_user_category_sort", "`user_id`, `category_id`, `sort_order`"},
+		{"Categories", "idx_categories_user_sort", "`user_id`, `sort_order`"},
+	}
+	for _, idx := range indexes {
+		if err := ensureIndex(database, idx.table, idx.name, idx.columns); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureIndex(database *sqlx.DB, table, name, columns string) error {
+	var n int
+	err := database.Get(&n, `
+		SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND LOWER(TABLE_NAME) = LOWER(?)
+		  AND INDEX_NAME = ?`, table, name)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	stmt := fmt.Sprintf("CREATE INDEX `%s` ON `%s` (%s)", name, table, columns)
+	if _, err := database.Exec(stmt); err != nil {
+		return fmt.Errorf("create index %s: %w", name, err)
+	}
+	log.Printf("Created index %s on %s", name, table)
 	return nil
 }
