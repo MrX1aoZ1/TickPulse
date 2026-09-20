@@ -1,211 +1,305 @@
 # TickPulse
 
-任务管理应用：Next.js 前端 + Go（当前主力）/ Node（旧版）后端 + MySQL。
+TickPulse is a personal task manager with a three-column workspace (lists, virtualized task list, editor) and a month calendar. Data lives in MySQL; the UI talks to a Go API over cookie sessions.
 
-| 服务 | 地址 |
+| Service | Address |
 |---|---|
-| 前端 | http://localhost:3001 |
+| Frontend | http://localhost:3001 |
 | API | http://localhost:3000 |
-| MySQL | Docker 容器映射到 localhost:3306，库名 `tickpulse_db` |
+| MySQL | Docker, published as `localhost:${MYSQL_PORT}` (default `3306`), database `tickpulse_db` |
 
-前端和后端必须**同时**开着。两个后端都监听 3000，不要一起启动。
+Run the frontend and the Go API together. CORS is locked to `http://localhost:3001`, and the UI is hardcoded to call `http://localhost:3000`.
 
-## 环境要求
+## Features
 
-- Node.js（建议 18+）
+- Email/password accounts, plus optional Google and GitHub OAuth
+- Per-user **Inbox** (cannot be deleted); custom lists with drag-and-drop order
+- Tasks with status (`pending`, `completed`, `cancelled`, `deleted`), priority, deadline, notes, and optional time range
+- Smart filters: All, Today, Next 7 Days, Completed, Won't Do, Trash
+- Multi-select (`Ctrl`/`Cmd` click, `Shift` range) and block drag-and-drop
+- LexoRank ordering computed on the server from neighbor ids (`prev_id` / `next_id`)
+- Virtualized middle column (`@tanstack/react-virtual` + `@dnd-kit`)
+- Month calendar
+- Light / dark theme
+- HttpOnly session cookie `connect.sid` (24 hours)
+
+## Requirements
+
+- Node.js 18+
 - Go 1.23+
-- Docker Desktop（只需跑 MySQL；`docker run hello-world` 能成功即可）
-- 两个终端窗口（一个后端、一个前端）
+- Docker Desktop (MySQL 8 only; `docker run hello-world` is enough to confirm Docker works)
 
-## 1. 安装依赖
+## Quick start
 
-在仓库的 `tickpulse` 目录：
+### 1. Install frontend dependencies
 
-```powershell
-cd F:\CSCI3100_Project\tickpulse
-npm install
-cd backend
+From the repository root:
+
+```bash
 npm install
 ```
 
-Go 模块会在第一次 `go run` / `go test` 时自动下载。
+Go modules download on the first `go run` or `go test`.
 
-## 2. 配置 MySQL 和 `.env`
+### 2. Configure environment
 
-Go 后端只读 `backend-go/.env`。可从 `backend-go/.env.example` 复制一份。至少包含：
+The Go process reads `backend-go/.env` (also found if you start from the repo root). Copy the example and edit it:
+
+```bash
+cp backend-go/.env.example backend-go/.env
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item backend-go\.env.example backend-go\.env
+```
+
+Required values:
 
 ```env
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
 MYSQL_USER=root
-MYSQL_PASSWORD=你的MySQL密码
+MYSQL_PASSWORD=change-me
 MYSQL_DATABASE=tickpulse_db
 
 PORT=3000
-ACCESS_TOKEN_SECRET=任意一串密钥
+ACCESS_TOKEN_SECRET=replace-with-a-long-random-string
 CLIENT_URL=http://localhost:3001
-
-# GitHub OAuth（可选）
-# GITHUB_CLIENT_ID=
-# GITHUB_CLIENT_SECRET=
-# GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 ```
 
-Google / GitHub 登录可选；不填也不影响邮箱密码登录。`MYSQL_PASSWORD` 会同时用作 Docker MySQL 的 root 密码。
+`MYSQL_PASSWORD` is also the Docker MySQL root password. Google / GitHub OAuth is optional; email login works without those keys.
 
-在 `backend-go` 目录启动数据库容器（Compose 会自动读同目录的 `.env`）：
+### 3. Start MySQL
 
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend-go
+Compose loads `backend-go/.env` automatically:
+
+```bash
+cd backend-go
 docker compose up -d
-```
-
-第一次会拉取 `mysql:8.0` 镜像。等容器 healthy 后再开后端。查看状态：
-
-```powershell
 docker compose ps
 ```
 
-停止容器（数据仍在 volume 里）：
+Wait until the container is **healthy**. The first start pulls `mysql:8.0`.
 
-```powershell
+If port `3306` is already taken (a local MySQL service is a common cause), set `MYSQL_PORT=3307` in `backend-go/.env`. Compose publishes `3307:3306`, and the Go API connects to `3307`.
+
+Stop the container (volume data is kept):
+
+```bash
 docker compose down
 ```
 
-如果本机已经有 MySQL 占用 3306（例如 Windows 服务 `MySQL267`），把 `backend-go/.env` 里的 `MYSQL_PORT` 改成 `3307`。Compose 会映射 `3307:3306`，Go 后端也会连 3307。当前推荐这样和本机 MySQL 并存。
+The API creates `tickpulse_db` and tables on startup. If `Tasks.sort_order` is still a numeric type from an older schema, it is rewritten to LexoRank strings automatically.
 
-Go 后端启动时会自动执行 `CREATE DATABASE IF NOT EXISTS tickpulse_db` 并建表。也可以自己执行：
+### 4. Start the API
 
-```sql
-CREATE DATABASE IF NOT EXISTS tickpulse_db
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-```
-
-## 3. 启动后端（Go，推荐）
-
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend-go
+```bash
+cd backend-go
 go run ./cmd/server
 ```
 
-成功时大致会看到：
+You should see something like:
 
 ```text
 Database tickpulse_db created or already exists
 MySQL connected
 All tables created or already exist
 Server is running on port 3000
-Listening and serving HTTP on :3000
 ```
 
-Gin 的 debug warning（debug mode、trusted proxies）在本地开发可以忽略。`exit status 0xc000013a` 是 Windows 上 Ctrl+C 停进程，不是崩溃。
+Gin debug / trusted-proxy warnings are safe to ignore locally. On Windows, `exit status 0xc000013a` after Ctrl+C is a normal stop, not a crash.
 
-### 旧版 Node 后端（一般不用）
+### 5. Start the frontend
 
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend
-npm run dev
-```
+In a second terminal, from the repository root. Next.js defaults to port 3000, so you must use **3001**:
 
-## 4. 启动前端
-
-另开一个终端。Next 默认也是 3000，必须指定 **3001**，才能和 API、CORS 对上：
-
-```powershell
-cd F:\CSCI3100_Project\tickpulse
+```bash
 npm run dev -- -p 3001
 ```
 
-浏览器打开 http://localhost:3001 。
+Open http://localhost:3001.
 
-分类和任务拖曳排序时，前端只提交前后邻居的 id（`prev_id` / `next_id`），**LexoRank 在 Go 后端计算**。任务列表支持 Ctrl/Cmd 多选、Shift 范围选，拖曳其中一个会把整组按相对顺序一起移动（`PUT /api/tasks/reorder`，body 含 `ids`）。请使用 `go run ./cmd/server`，不要用旧 Node 后端测拖曳。启动时若 `Tasks.sort_order` 仍是 DOUBLE，会自动改成 VARCHAR 并重写为 LexoRank。
+### 6. Seed a login account
 
-## 5. 准备一个能登录前端的测试账号
+`go test` creates users and deletes them afterward, so those accounts cannot be used in the UI. Seed a stable user:
 
-`go test` 里创建的用户测完会删掉，不能拿来登界面。用：
-
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend-go
+```bash
+cd backend-go
 go run ./cmd/inituser
 ```
 
-默认账号（已存在会复用，并**再追加**一批随机分类和任务）：
+Default credentials (reused if the user already exists; extra random lists and tasks are always appended):
 
-- 邮箱：`test@tickpulse.com`
-- 密码：`Password.123!`
+- Email: `test@tickpulse.com`
+- Password: `Password.123!`
 
-默认追加 5 个分类、16 个任务。改数量：
+Defaults: 5 extra categories and 16 tasks. Override with:
 
-```powershell
+```bash
+# Unix
+INIT_CATEGORIES=8 INIT_TASKS=30 go run ./cmd/inituser
+
+# PowerShell
 $env:INIT_CATEGORIES = "8"
 $env:INIT_TASKS = "30"
 go run ./cmd/inituser
 ```
 
-然后在 http://localhost:3001/login 登录。
+Optional: `INIT_EMAIL`, `INIT_PASSWORD`. Then sign in at http://localhost:3001/login.
 
-## 授权密钥（未接入产品流程）
+Sign-up passwords must be 8–63 characters and include uppercase, lowercase, a digit, and one of `!@#$%^&*.`.
 
-注册和日历**暂时不检查** license，避免本地/演示测试被挡住。目录和 `GET/PUT /api/license` 仍留在 Go 里，以后接支付再挂到注册或日历即可。
+## Project layout
 
-## 6. 跑测试
+```text
+.
+├── src/                     Next.js App Router UI
+│   ├── app/                 Routes: /, /login, /sign-up, /webapp, /webapp/calendar
+│   ├── components/          Task list, calendar, editor, chrome
+│   ├── context/             Auth, tasks, theme, toasts
+│   └── lib/                 Selection, reorder, and section helpers
+├── backend-go/
+│   ├── cmd/server           HTTP API
+│   ├── cmd/inituser         Seed a local login user
+│   ├── cmd/rebalance-sort   Inspect / rewrite duplicate LexoRanks
+│   ├── cmd/bench-sql        Optional SQL shape benchmark
+│   ├── cmd/bench-category   Optional category-filter vs full-list benchmark
+│   ├── internal/            Config, db, handlers, models, sessions
+│   ├── test_module/         HTTP API tests against real MySQL
+│   └── docker-compose.yml   MySQL 8
+└── package.json             Frontend scripts
+```
 
-### Go 自动化测试（推荐）
+Frontend routes:
 
-**不必**先手动启动 API。测试会自己起临时 HTTP 服务，连真实 MySQL，测完清掉测试用户。
+| Path | Page |
+|---|---|
+| `/` | Landing |
+| `/login`, `/sign-up` | Auth |
+| `/auth/callback` | OAuth return |
+| `/webapp` | Task workspace |
+| `/webapp/calendar` | Month calendar |
+| `/calendar` | Redirects to `/webapp/calendar` |
 
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend-go
+## API (Go)
+
+Session cookie: `connect.sid`. Task and category routes require a logged-in session.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/auth/check` | Current session |
+| POST | `/auth/sign-up` | `{ email, password }` |
+| POST | `/auth/login` | `{ email, password }` |
+| POST | `/auth/logout` | |
+| GET | `/auth/google`, `/auth/github` | OAuth start |
+| GET | `/auth/google/callback`, `/auth/github/callback` | OAuth return |
+| GET | `/api/tasks` | Optional `?category_id=` |
+| POST | `/api/tasks` | Create |
+| GET/PUT/DELETE | `/api/tasks/:taskId` | Read / patch / delete |
+| PUT | `/api/tasks/:taskId/reorder` | `{ prev_id, next_id }` |
+| PUT | `/api/tasks/reorder` | `{ ids, prev_id, next_id }` (multi-select, max 100) |
+| GET/POST | `/api/categories` | List / create |
+| GET | `/api/categories/:categoryId` | Tasks in that list |
+| PUT | `/api/categories/:categoryId` | Rename / color |
+| PUT | `/api/categories/:categoryId/order` | `{ prev_id, next_id }` |
+| DELETE | `/api/categories/:categoryId` | Moves tasks to Inbox |
+| GET/PUT | `/api/license` | Stored key; not enforced on sign-up or calendar yet |
+| GET | `/api/data` | Unauthenticated health-style payload |
+
+Drag-and-drop sends neighbor ids only. Do not send LexoRank strings from the client.
+
+Deleting a list moves its tasks to that user's Inbox (`inbox_<userId>`). Inbox cannot be deleted.
+
+## License keys (not wired into the product flow)
+
+`GET` / `PUT /api/license` and a demo catalog in `backend-go/internal/license` exist for later billing. Sign-up and calendar do **not** require a key today, so local and demo use is not blocked.
+
+Demo keys (tests / future UI only):
+
+- Normal: `BK67-M61S-DH4Y-H6E9`
+- Premium: `NBUN-JW8N-SUIS-451N`
+
+## Tests
+
+### Go API (recommended)
+
+You do **not** need to start the API yourself. Tests spin up a temporary HTTP server, use the real MySQL from `.env`, and delete the users they create.
+
+```bash
+cd backend-go
 go test ./internal/models ./internal/license ./test_module -count=1 -v
 ```
 
-覆盖内容：
+Coverage:
 
-- `internal/license`：预留的演示密钥目录（产品流程尚未使用）
-- `test_module/license_test.go`：预留的 `/api/license`（未登录 401；注册不要求 key）
-- `test_module/initial_api_test.go`：注册 → 登录 → 建任务 → 列分类 → 登出后再建任务应 401
-- `test_module/session_test.go`：双用户 session 隔离、伪造 cookie、登出失效
-- `test_module/crud_security_test.go`：错密码、重复邮箱、越权读写删、Inbox 不可删、删分类后任务回 Inbox
+- `internal/license` — demo key catalog
+- `internal/models` — LexoRank helpers
+- `test_module/initial_api_test.go` — sign-up → login → create task → list categories → 401 after logout
+- `test_module/session_test.go` — two-user isolation, forged cookie, logout
+- `test_module/crud_security_test.go` — wrong password, duplicate email, cross-user CRUD, Inbox protection, tasks moved to Inbox
+- `test_module/license_test.go` — `/api/license` needs auth; sign-up does not require a key
+- `test_module/index_test.go` — list indexes exist
 
-可选压测（播种后计时查询，用完删除临时用户）：
+Optional query timing (seeds a throwaway user, then deletes it):
 
-```powershell
+```bash
+# Unix
+TICKPULSE_STRESS=1 TICKPULSE_STRESS_N=10000 go test ./test_module -run TestListTasksQueryTiming -count=1 -v
+
+# PowerShell
 $env:TICKPULSE_STRESS = "1"
 $env:TICKPULSE_STRESS_N = "10000"
 go test ./test_module -run TestListTasksQueryTiming -count=1 -v
 ```
 
-### 旧 Node 脚本（`backend/test_module`）
+### Frontend list helpers
 
-需要**已经在跑**的 API（3000）。这些脚本没有按 Go 测试那套改过，主要问题：
+No browser required:
 
-- `initial_api_test.js`：每次随机邮箱，适合当时手动抄账号；登出后打的是错误路径 `/tasks`
-- `session_test.js`：写死了另一台电脑上的用户，这台库里通常不存在
-- `seed.js` / `stress-test.js`：写死 user id / category id
-
-日常请用上面的 `go test` 和 `go run ./cmd/inituser`。
-
-若仍要跑旧脚本：
-
-```powershell
-cd F:\CSCI3100_Project\tickpulse\backend\test_module
-node initial_api_test.js
+```bash
+npm run test:lib
 ```
 
-## 常见问题
+## Extra Go commands
+
+All run from `backend-go/` and use the same `.env` MySQL.
+
+```bash
+go run ./cmd/rebalance-sort          # inspect duplicate task ranks
+go run ./cmd/rebalance-sort --apply  # rewrite them to unique LexoRanks
+
+go run ./cmd/bench-sql               # compare list SQL shapes (default 3000 rows)
+go run ./cmd/bench-category          # category-filtered list vs full list
+```
+
+Bench tools seed a throwaway user and delete those rows when they finish. Optional env: `BENCH_N`, `BENCH_ROUNDS`; `bench-category` also uses `BENCH_CATEGORIES`.
+
+## OAuth (optional)
+
+Create a Google OAuth client and/or a GitHub OAuth App, then set `*_CLIENT_ID`, `*_CALLBACK_URL`, and secrets in `backend-go/.env`.
+
+Suggested local callbacks:
+
+- Google: `http://localhost:3000/auth/google/callback`
+- GitHub: `http://localhost:3000/auth/github/callback`
+
+After the provider returns, the API serves a small HTML page that navigates to the frontend so the session cookie is not dropped on a cross-origin 302.
+
+## Troubleshooting
 
 **`Error 1049 Unknown database 'tickpulse_db'`**  
-容器已起但库还不存在。更新后的 Go 后端会自动建库；若仍报错，确认 `backend-go/.env` 里的库名，并在 `backend-go` 下检查 `docker compose ps` 是否为 healthy。
+MySQL is up but the database is missing. Current Go code creates it on start. Confirm `MYSQL_DATABASE` in `backend-go/.env` and that `docker compose ps` is healthy.
 
 **`Error 1045 Access denied`**  
-`MYSQL_USER` / `MYSQL_PASSWORD` 和 Docker MySQL 不一致。请在 `backend-go` 目录用 `docker compose up -d`，保证密码来自同一份 `backend-go/.env`。
+`MYSQL_USER` / `MYSQL_PASSWORD` do not match the container. Start Compose from `backend-go` so it uses the same `.env` as the API.
 
-**`Bind for 0.0.0.0:3306 failed: port is already allocated`**  
-3306 被本机 MySQL 或其他进程占用。停掉本机 MySQL，或把 `MYSQL_PORT` 改成空闲端口（如 3307）。
+**`Bind for 0.0.0.0:3306 failed`**  
+Something else owns 3306. Stop that MySQL, or set `MYSQL_PORT` to a free port (for example `3307`).
 
-**前端能开但登录失败 / CORS**  
-确认前端是 3001、后端是 3000，且没有两个后端抢同一个端口。
+**Login fails or CORS errors**  
+Frontend must be 3001 and API 3000. Only one process should listen on 3000.
 
-**Google / GitHub 登录跳不过去**  
-需要在 Google Cloud 或 GitHub OAuth App 配好，并填对应的 `*_CLIENT_ID`、`*_CLIENT_SECRET`、`*_CALLBACK_URL`。GitHub 回调地址用 `http://localhost:3000/auth/github/callback`。本地邮箱注册不受影响。
+**Google / GitHub login never returns**  
+The OAuth app and env vars are missing or the callback URL is wrong. Email/password sign-up is independent of OAuth.
